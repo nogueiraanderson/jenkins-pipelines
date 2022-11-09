@@ -318,6 +318,9 @@ pipeline {
             }
         }
         stage('Run Tests') {
+            options {
+                timeout(time: 150, unit: "MINUTES")
+            }
             parallel {
                 stage('Run UI - Tests') {
                     options {
