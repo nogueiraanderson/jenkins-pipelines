@@ -274,5 +274,10 @@ pipeline {
             ])
             */
         }
+        failure {
+            script {
+                archiveArtifacts artifacts: 'tests/output/parallel_chunk*/*.png'
+            }
+        }
     }
 }
