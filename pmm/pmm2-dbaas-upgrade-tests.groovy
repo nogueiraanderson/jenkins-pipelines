@@ -368,5 +368,10 @@ pipeline {
             '''
             deleteDir()
         }
+        failure {
+            script {
+                archiveArtifacts artifacts: 'tests/output/parallel_chunk*/*.png'
+            }
+        }
     }
 }
