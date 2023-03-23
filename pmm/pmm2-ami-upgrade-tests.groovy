@@ -370,5 +370,10 @@ pipeline {
             ])
             */
         }
+        failure {
+            script {
+                archiveArtifacts artifacts: 'tests/output/*.png'
+            }
+        }
     }
 }
