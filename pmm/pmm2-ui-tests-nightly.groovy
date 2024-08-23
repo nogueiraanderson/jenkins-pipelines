@@ -409,7 +409,7 @@ pipeline {
         }
         stage('Run Tests') {
             parallel {
-                stage('Run UI - Tests') {
+                stage('Run UI - Tests - @qan') {
                     options {
                         timeout(time: 150, unit: "MINUTES")
                     }
@@ -421,7 +421,41 @@ pipeline {
                             sh """
                                 sed -i 's+http://localhost/+${PMM_UI_URL}/+g' pr.codecept.js
                                 export PWD=\$(pwd);
-                                npx codeceptjs run --reporter mocha-multi -c pr.codecept.js --grep '@qan|@nightly|@menu' --override '{ "helpers": { "Playwright": { "browser": "firefox" }}}'
+                                npx codeceptjs run --reporter mocha-multi -c pr.codecept.js --grep '@qan' --override '{ "helpers": { "Playwright": { "browser": "firefox" }}}'
+                            """
+                        }
+                    }
+                }
+                stage('Run UI - Tests - @nightly') {
+                    options {
+                        timeout(time: 150, unit: "MINUTES")
+                    }
+                    when {
+                        expression { env.AMI_TEST == "no" }
+                    }
+                    steps {
+                        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'PMM_AWS_DEV', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                            sh """
+                                sed -i 's+http://localhost/+${PMM_UI_URL}/+g' pr.codecept.js
+                                export PWD=\$(pwd);
+                                npx codeceptjs run --reporter mocha-multi -c pr.codecept.js --grep '@nightly' --override '{ "helpers": { "Playwright": { "browser": "firefox" }}}'
+                            """
+                        }
+                    }
+                }
+                stage('Run UI - Tests - @menu') {
+                    options {
+                        timeout(time: 150, unit: "MINUTES")
+                    }
+                    when {
+                        expression { env.AMI_TEST == "no" }
+                    }
+                    steps {
+                        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'PMM_AWS_DEV', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                            sh """
+                                sed -i 's+http://localhost/+${PMM_UI_URL}/+g' pr.codecept.js
+                                export PWD=\$(pwd);
+                                npx codeceptjs run --reporter mocha-multi -c pr.codecept.js --grep '@menu' --override '{ "helpers": { "Playwright": { "browser": "firefox" }}}'
                             """
                         }
                     }
