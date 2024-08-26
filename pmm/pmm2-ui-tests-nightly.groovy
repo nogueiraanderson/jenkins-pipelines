@@ -490,6 +490,9 @@ pipeline {
             sh '''
                 curl --insecure ${PMM_URL}/logs.zip --output logs.zip || true
             '''
+            unstash 'testresult-Run UI - Tests - @menu'
+            unstash 'testresult-Run UI - Tests - @nightly'
+            unstash 'testresult-Run UI - Tests - @qan'
             script {
                 if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
                     junit 'tests/output/*.xml'
