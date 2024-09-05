@@ -424,6 +424,10 @@ pipeline {
                                 npx codeceptjs run --reporter mocha-multi -c pr.codecept.js --grep '@qan' --override '{ "helpers": { "Playwright": { "browser": "firefox" }}}'
                             """
                         }
+                        script {
+                            archiveArtifacts artifacts: 'logs.zip'
+                            archiveArtifacts artifacts: 'tests/output/*.png'
+                        }
                     }
                 }
                 stage('Run UI - Tests - @nightly') {
@@ -441,6 +445,10 @@ pipeline {
                                 npx codeceptjs run --reporter mocha-multi -c pr.codecept.js --grep '@nightly' --override '{ "helpers": { "Playwright": { "browser": "firefox" }}}'
                             """
                         }
+                        script {
+                            archiveArtifacts artifacts: 'logs.zip'
+                            archiveArtifacts artifacts: 'tests/output/*.png'
+                        }
                     }
                 }
                 stage('Run UI - Tests - @menu') {
@@ -457,6 +465,10 @@ pipeline {
                                 export PWD=\$(pwd);
                                 npx codeceptjs run --reporter mocha-multi -c pr.codecept.js --grep '@menu' --override '{ "helpers": { "Playwright": { "browser": "firefox" }}}'
                             """
+                        }
+                        script {
+                            archiveArtifacts artifacts: 'logs.zip'
+                            archiveArtifacts artifacts: 'tests/output/*.png'
                         }
                     }
                 }
@@ -497,12 +509,9 @@ pipeline {
                 if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
                     junit 'tests/output/*.xml'
                     slackSend botUser: true, channel: '#pmm-ci', color: '#00FF00', message: "[${JOB_NAME}]: build finished - ${BUILD_URL}"
-                    archiveArtifacts artifacts: 'logs.zip'
                 } else {
                     junit 'tests/output/*.xml'
                     slackSend botUser: true, channel: '#pmm-ci', color: '#FF0000', message: "[${JOB_NAME}]: build ${currentBuild.result} - ${BUILD_URL}"
-                    archiveArtifacts artifacts: 'logs.zip'
-                    archiveArtifacts artifacts: 'tests/output/*.png'
                 }
             }
             /*
