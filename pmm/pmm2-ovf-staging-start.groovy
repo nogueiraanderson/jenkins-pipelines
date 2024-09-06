@@ -277,8 +277,6 @@ pipeline {
                                     export PMM_CLIENT_VERSION="latest"
                                 fi
                                 [ -z "${CLIENTS}" ] && exit 0 || :
-                                    export PMM_SERVER_IP=${IP}
-
                                     if [[ ${CLIENT_VERSION} != dev-latest ]]; then
                                         export PATH="`pwd`/pmm2-client/bin:$PATH"
                                     fi
@@ -298,7 +296,7 @@ pipeline {
                                         --dbdeployer \
                                         --run-load-pmm2 \
                                         --query-source=${QUERY_SOURCE} \
-                                        --pmm2-server-ip=$PMM_SERVER_IP
+                                        --pmm2-server-ip=${IP}
                             '
                         """
                     }
