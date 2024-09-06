@@ -37,6 +37,10 @@ pipeline {
             defaultValue: 'PMM2-Server-dev-latest.ova',
             description: 'OVA Image version, for installing already released version, pass 2.x.y ex. 2.28.0',
             name: 'OVA_VERSION')
+        string(
+            defaultValue: 'dev-latest',
+            description: 'PMM Client version ("dev-latest" for main branch, "latest" or "X.X.X" for released version, "pmm2-rc" for Release Candidate, "http://..." for feature build)',
+            name: 'CLIENT_VERSION')
         choice(
             choices: ['no', 'yes'],
             description: 'Enable Testing Repo, for RC testing',
@@ -225,7 +229,7 @@ pipeline {
         stage('Run Clients') {
             steps {
                 node(env.VM_NAME){
-                    setupPMMClient(SERVER_IP, CLIENT_VERSION.trim(), PMM_VERSION, ENABLE_PULL_MODE, ENABLE_TESTING_REPO, CLIENT_INSTANCE, 'compose_setup', ADMIN_PASSWORD)
+                    setupPMMClient(env.IP, CLIENT_VERSION.trim(), "pmm2", "no", env.ENABLE_TESTING_REPO, "no", 'compose_setup', "admin")
                     script {
                         env.PMM_REPO="experimental"
                         if(env.CLIENT_VERSION == "pmm2-rc") {
@@ -242,36 +246,32 @@ pipeline {
                             export PMM_CLIENT_VERSION="latest"
                         fi
                         [ -z "${CLIENTS}" ] && exit 0 || :
+                            export PMM_SERVER_IP=${SERVER_IP}
 
-                            if [[ ${PMM_VERSION} == pmm2 ]]; then
-
-                                export PMM_SERVER_IP=${SERVER_IP}
-
-                                if [[ ${CLIENT_VERSION} != dev-latest ]]; then
-                                    export PATH="`pwd`/pmm2-client/bin:$PATH"
-                                fi
-                                if [[ ${CLIENT_INSTANCE} == no ]]; then
-                                    export PMM_SERVER_IP=${IP}
-                                fi
-
-                                bash /srv/pmm-qa/pmm-tests/pmm-framework.sh \
-                                    --ms-version  ${MS_VERSION} \
-                                    --mo-version  ${MO_VERSION} \
-                                    --ps-version  ${PS_VERSION} \
-                                    --modb-version ${MODB_VERSION} \
-                                    --md-version  ${MD_VERSION} \
-                                    --pgsql-version ${PGSQL_VERSION} \
-                                    --pxc-version ${PXC_VERSION} \
-                                    --pdpgsql-version ${PDPGSQL_VERSION} \
-                                    --download \
-                                    ${CLIENTS} \
-                                    --pmm2 \
-                                    --dbdeployer \
-                                    --run-load-pmm2 \
-                                    --query-source=${QUERY_SOURCE} \
-                                    --pmm2-server-ip=$PMM_SERVER_IP
+                            if [[ ${CLIENT_VERSION} != dev-latest ]]; then
+                                export PATH="`pwd`/pmm2-client/bin:$PATH"
                             fi
-                    '''
+                            if [[ ${CLIENT_INSTANCE} == no ]]; then
+                                export PMM_SERVER_IP=${IP}
+                            fi
+
+                            bash /srv/pmm-qa/pmm-tests/pmm-framework.sh \
+                                --ms-version  ${MS_VERSION} \
+                                --mo-version  ${MO_VERSION} \
+                                --ps-version  ${PS_VERSION} \
+                                --modb-version ${MODB_VERSION} \
+                                --md-version  ${MD_VERSION} \
+                                --pgsql-version ${PGSQL_VERSION} \
+                                --pxc-version ${PXC_VERSION} \
+                                --pdpgsql-version ${PDPGSQL_VERSION} \
+                                --download \
+                                ${CLIENTS} \
+                                --pmm2 \
+                                --dbdeployer \
+                                --run-load-pmm2 \
+                                --query-source=${QUERY_SOURCE} \
+                                --pmm2-server-ip=$PMM_SERVER_IP
+                '''
                 }
             }
         }
