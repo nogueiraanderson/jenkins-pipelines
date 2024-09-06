@@ -246,9 +246,6 @@ pipeline {
                                     if [[ ${CLIENT_VERSION} != dev-latest ]]; then
                                         export PATH="`pwd`/pmm2-client/bin:$PATH"
                                     fi
-                                    if [[ ${CLIENT_INSTANCE} == no ]]; then
-                                        export PMM_SERVER_IP=${IP}
-                                    fi
 
                                     bash /srv/pmm-qa/pmm-tests/pmm-framework.sh \
                                         --ms-version  ${MS_VERSION} \
