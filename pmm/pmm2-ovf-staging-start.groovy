@@ -53,6 +53,21 @@ pipeline {
             defaultValue: '',
             description: 'Commit hash for pmm-qa branch',
             name: 'PMM_QA_GIT_COMMIT_HASH')
+        text(
+            defaultValue: '',
+            description: '''
+            Configure PMM Clients
+            ms - MySQL (ex. --addclient=ms,1),
+            ps - Percona Server for MySQL (ex. --addclient=ps,1),
+            pxc - Percona XtraDB Cluster, --with-proxysql (to be used with proxysql only ex. --addclient=pxc,1 --with-proxysql),
+            md - MariaDB Server (ex. --addclient=md,1),
+            mo - Percona Server for MongoDB(ex. --addclient=mo,1),
+            modb - Official MongoDB version from MongoDB Inc (ex. --addclient=modb,1),
+            pgsql - Postgre SQL Server (ex. --addclient=pgsql,1)
+            pdpgsql - Percona Distribution for PostgreSQL (ex. --addclient=pdpgsql,1)
+            An example: --addclient=ps,1 --addclient=mo,1 --addclient=md,1 --addclient=pgsql,2 --addclient=modb,2
+            ''',
+            name: 'CLIENTS')
     }
     options {
         skipDefaultCheckout()
@@ -210,7 +225,7 @@ pipeline {
         stage('Run Clients') {
             steps {
                 node(env.VM_NAME){
-                    setupPMMClient(SERVER_IP, CLIENT_VERSION.trim(), PMM_VERSION, ENABLE_PULL_MODE, ENABLE_TESTING_REPO, CLIENT_INSTANCE, 'aws-staging', ADMIN_PASSWORD)
+                    setupPMMClient(SERVER_IP, CLIENT_VERSION.trim(), PMM_VERSION, ENABLE_PULL_MODE, ENABLE_TESTING_REPO, CLIENT_INSTANCE, 'compose_setup', ADMIN_PASSWORD)
                     script {
                         env.PMM_REPO="experimental"
                         if(env.CLIENT_VERSION == "pmm2-rc") {
