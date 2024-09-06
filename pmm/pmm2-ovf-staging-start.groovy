@@ -229,44 +229,46 @@ pipeline {
         stage('Run Clients') {
             steps {
                 node(env.VM_NAME){
-                    //setupPMMClient(env.IP, CLIENT_VERSION.trim(), "pmm2", "no", env.ENABLE_TESTING_REPO, "no", 'compose_setup', "admin", true)
-                    sh '''
-                        ssh -i "${KEY_PATH}" -p 3022 -o ConnectTimeout=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null admin@${IP} '
-                            set -o errexit
-                            set -o xtrace
-                            export PATH=$PATH:/usr/sbin
-                            export PMM_CLIENT_VERSION=${CLIENT_VERSION}
-                            if [[ ${CLIENT_VERSION} == dev-latest ]]; then
-                                export PMM_CLIENT_VERSION="latest"
-                            fi
-                            [ -z "${CLIENTS}" ] && exit 0 || :
-                                export PMM_SERVER_IP=${SERVER_IP}
-
-                                if [[ ${CLIENT_VERSION} != dev-latest ]]; then
-                                    export PATH="`pwd`/pmm2-client/bin:$PATH"
+                    withCredentials([sshUserPrivateKey(credentialsId: 'OVF_VM_TESTQA', keyFileVariable: 'KEY_PATH', passphraseVariable: '', usernameVariable: 'USER')]) {
+                        //setupPMMClient(env.IP, CLIENT_VERSION.trim(), "pmm2", "no", env.ENABLE_TESTING_REPO, "no", 'compose_setup', "admin", true)
+                        sh '''
+                            ssh -i "${KEY_PATH}" -p 3022 -o ConnectTimeout=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null admin@${IP} '
+                                set -o errexit
+                                set -o xtrace
+                                export PATH=$PATH:/usr/sbin
+                                export PMM_CLIENT_VERSION=${CLIENT_VERSION}
+                                if [[ ${CLIENT_VERSION} == dev-latest ]]; then
+                                    export PMM_CLIENT_VERSION="latest"
                                 fi
-                                if [[ ${CLIENT_INSTANCE} == no ]]; then
-                                    export PMM_SERVER_IP=${IP}
-                                fi
+                                [ -z "${CLIENTS}" ] && exit 0 || :
+                                    export PMM_SERVER_IP=${SERVER_IP}
 
-                                bash /srv/pmm-qa/pmm-tests/pmm-framework.sh \
-                                    --ms-version  ${MS_VERSION} \
-                                    --mo-version  ${MO_VERSION} \
-                                    --ps-version  ${PS_VERSION} \
-                                    --modb-version ${MODB_VERSION} \
-                                    --md-version  ${MD_VERSION} \
-                                    --pgsql-version ${PGSQL_VERSION} \
-                                    --pxc-version ${PXC_VERSION} \
-                                    --pdpgsql-version ${PDPGSQL_VERSION} \
-                                    --download \
-                                    ${CLIENTS} \
-                                    --pmm2 \
-                                    --dbdeployer \
-                                    --run-load-pmm2 \
-                                    --query-source=${QUERY_SOURCE} \
-                                    --pmm2-server-ip=$PMM_SERVER_IP
-                        '
-                '''
+                                    if [[ ${CLIENT_VERSION} != dev-latest ]]; then
+                                        export PATH="`pwd`/pmm2-client/bin:$PATH"
+                                    fi
+                                    if [[ ${CLIENT_INSTANCE} == no ]]; then
+                                        export PMM_SERVER_IP=${IP}
+                                    fi
+
+                                    bash /srv/pmm-qa/pmm-tests/pmm-framework.sh \
+                                        --ms-version  ${MS_VERSION} \
+                                        --mo-version  ${MO_VERSION} \
+                                        --ps-version  ${PS_VERSION} \
+                                        --modb-version ${MODB_VERSION} \
+                                        --md-version  ${MD_VERSION} \
+                                        --pgsql-version ${PGSQL_VERSION} \
+                                        --pxc-version ${PXC_VERSION} \
+                                        --pdpgsql-version ${PDPGSQL_VERSION} \
+                                        --download \
+                                        ${CLIENTS} \
+                                        --pmm2 \
+                                        --dbdeployer \
+                                        --run-load-pmm2 \
+                                        --query-source=${QUERY_SOURCE} \
+                                        --pmm2-server-ip=$PMM_SERVER_IP
+                            '
+                        '''
+                    }
                 }
             }
         }
