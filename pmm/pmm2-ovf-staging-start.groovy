@@ -241,7 +241,7 @@ pipeline {
                                     export PMM_CLIENT_VERSION="latest"
                                 fi
                                 [ -z "${CLIENTS}" ] && exit 0 || :
-                                    export PMM_SERVER_IP=${SERVER_IP}
+                                    export PMM_SERVER_IP=${IP}
 
                                     if [[ ${CLIENT_VERSION} != dev-latest ]]; then
                                         export PATH="`pwd`/pmm2-client/bin:$PATH"
