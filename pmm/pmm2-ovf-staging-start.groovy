@@ -207,6 +207,59 @@ pipeline {
                 }
             }
         }
+        stage('Run Clients') {
+            steps {
+                node(env.VM_NAME){
+                    setupPMMClient(SERVER_IP, CLIENT_VERSION.trim(), PMM_VERSION, ENABLE_PULL_MODE, ENABLE_TESTING_REPO, CLIENT_INSTANCE, 'aws-staging', ADMIN_PASSWORD)
+                    script {
+                        env.PMM_REPO="experimental"
+                        if(env.CLIENT_VERSION == "pmm2-rc") {
+                            env.PMM_REPO="testing"
+                        }
+
+                    }
+                    sh '''
+                        set -o errexit
+                        set -o xtrace
+                        export PATH=$PATH:/usr/sbin
+                        export PMM_CLIENT_VERSION=${CLIENT_VERSION}
+                        if [[ ${CLIENT_VERSION} == dev-latest ]]; then
+                            export PMM_CLIENT_VERSION="latest"
+                        fi
+                        [ -z "${CLIENTS}" ] && exit 0 || :
+
+                            if [[ ${PMM_VERSION} == pmm2 ]]; then
+
+                                export PMM_SERVER_IP=${SERVER_IP}
+
+                                if [[ ${CLIENT_VERSION} != dev-latest ]]; then
+                                    export PATH="`pwd`/pmm2-client/bin:$PATH"
+                                fi
+                                if [[ ${CLIENT_INSTANCE} == no ]]; then
+                                    export PMM_SERVER_IP=${IP}
+                                fi
+
+                                bash /srv/pmm-qa/pmm-tests/pmm-framework.sh \
+                                    --ms-version  ${MS_VERSION} \
+                                    --mo-version  ${MO_VERSION} \
+                                    --ps-version  ${PS_VERSION} \
+                                    --modb-version ${MODB_VERSION} \
+                                    --md-version  ${MD_VERSION} \
+                                    --pgsql-version ${PGSQL_VERSION} \
+                                    --pxc-version ${PXC_VERSION} \
+                                    --pdpgsql-version ${PDPGSQL_VERSION} \
+                                    --download \
+                                    ${CLIENTS} \
+                                    --pmm2 \
+                                    --dbdeployer \
+                                    --run-load-pmm2 \
+                                    --query-source=${QUERY_SOURCE} \
+                                    --pmm2-server-ip=$PMM_SERVER_IP
+                            fi
+                    '''
+                }
+            }
+        }
     }
     post {
         success {
