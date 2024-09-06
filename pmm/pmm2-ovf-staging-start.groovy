@@ -57,6 +57,42 @@ pipeline {
             defaultValue: '',
             description: 'Commit hash for pmm-qa branch',
             name: 'PMM_QA_GIT_COMMIT_HASH')
+        choice(
+            choices: ['8.0','5.7'],
+            description: 'Percona XtraDB Cluster version',
+            name: 'PXC_VERSION')
+        choice(
+            choices: ['8.0', '5.7', '5.7.30', '5.6'],
+            description: "Percona Server for MySQL version",
+            name: 'PS_VERSION')
+        choice(
+            choices: ['8.0', '5.7', '5.6'],
+            description: 'MySQL Community Server version',
+            name: 'MS_VERSION')
+        choice(
+            choices: ['15','14', '13', '12', '11'],
+            description: "Which version of PostgreSQL",
+            name: 'PGSQL_VERSION')
+        choice(
+            choices: ['16.1','15.5', '14.10', '13.13', '12.17', '11.22'],
+            description: 'Percona Distribution for PostgreSQL',
+            name: 'PDPGSQL_VERSION')
+        choice(
+            choices: ['10.6', '10.5', '10.4', '10.3', '10.2'],
+            description: "MariaDB Server version",
+            name: 'MD_VERSION')
+        choice(
+            choices: ['7.0', '6.0', '5.0', '4.4'],
+            description: "Percona Server for MongoDB version",
+            name: 'MO_VERSION')
+        choice(
+            choices: ['4.4', '4.2', '4.0', '7.0', '6.0', '5.0.2'],
+            description: "Official MongoDB version from MongoDB Inc",
+            name: 'MODB_VERSION')
+        choice(
+            choices: ['perfschema', 'slowlog'],
+            description: "Query Source for Monitoring",
+            name: 'QUERY_SOURCE')
         text(
             defaultValue: '',
             description: '''
