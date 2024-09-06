@@ -231,7 +231,7 @@ pipeline {
                 node(env.VM_NAME){
                     withCredentials([sshUserPrivateKey(credentialsId: 'OVF_VM_TESTQA', keyFileVariable: 'KEY_PATH', passphraseVariable: '', usernameVariable: 'USER')]) {
                         //setupPMMClient(env.IP, CLIENT_VERSION.trim(), "pmm2", "no", env.ENABLE_TESTING_REPO, "no", 'compose_setup', "admin", true)
-                        sh '''
+                        sh """
                             ssh -i "${KEY_PATH}" -p 3022 -o ConnectTimeout=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null admin@${IP} '
                                 set -o errexit
                                 set -o xtrace
@@ -267,7 +267,7 @@ pipeline {
                                         --query-source=${QUERY_SOURCE} \
                                         --pmm2-server-ip=$PMM_SERVER_IP
                             '
-                        '''
+                        """
                     }
                 }
             }
