@@ -193,6 +193,10 @@ pipeline {
                         VBoxManage startvm --type headless ${VM_NAME}
                         cat /tmp/${VM_NAME}-console.log
                         timeout 100 bash -c 'until curl --insecure -LI https://${IP}; do sleep 5; done' || true
+                        echo "Install docker on OVF instance."
+                        sudo yum install -y yum-utils
+                        sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+                        sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
                     """
                     sh """
                         # This fails sometimes, so we want to isolate this step
