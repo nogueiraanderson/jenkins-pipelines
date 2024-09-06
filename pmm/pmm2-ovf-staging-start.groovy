@@ -229,14 +229,7 @@ pipeline {
         stage('Run Clients') {
             steps {
                 node(env.VM_NAME){
-                    setupPMMClient(env.IP, CLIENT_VERSION.trim(), "pmm2", "no", env.ENABLE_TESTING_REPO, "no", 'compose_setup', "admin")
-                    script {
-                        env.PMM_REPO="experimental"
-                        if(env.CLIENT_VERSION == "pmm2-rc") {
-                            env.PMM_REPO="testing"
-                        }
-
-                    }
+                    setupPMMClient(env.IP, CLIENT_VERSION.trim(), "pmm2", "no", env.ENABLE_TESTING_REPO, "no", 'compose_setup', "admin", true)
                     sh '''
                         set -o errexit
                         set -o xtrace
