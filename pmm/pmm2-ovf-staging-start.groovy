@@ -278,6 +278,8 @@ pipeline {
                                 sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
                                 sudo gpasswd -a $USER docker
                                 sudo systemctl start docker
+                                echo "$USER"
+                                whoami
 
                                 export PATH=$PATH:/usr/sbin
                                 export PMM_CLIENT_VERSION=${CLIENT_VERSION}
