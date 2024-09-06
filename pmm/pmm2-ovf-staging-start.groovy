@@ -291,7 +291,7 @@ pipeline {
                                         export PATH="`pwd`/pmm2-client/bin:$PATH"
                                     fi
 
-                                    bash /srv/pmm-qa/pmm-tests/pmm-framework.sh \
+                                    sudo bash /srv/pmm-qa/pmm-tests/pmm-framework.sh \
                                         --ms-version  ${MS_VERSION} \
                                         --mo-version  ${MO_VERSION} \
                                         --ps-version  ${PS_VERSION} \
