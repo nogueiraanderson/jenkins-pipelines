@@ -421,54 +421,8 @@ pipeline {
                             sh """
                                 sed -i 's+http://localhost/+${PMM_UI_URL}/+g' pr.codecept.js
                                 export PWD=\$(pwd);
-                                npx codeceptjs run --reporter mocha-multi -c pr.codecept.js --grep '@qan' --override '{ "helpers": { "Playwright": { "browser": "firefox" }}}'
+                                npx codeceptjs run-workers 3 --reporter mocha-multi -c pr.codecept.js --grep '@qan|@nightly|@menu' --override '{ "helpers": { "Playwright": { "browser": "firefox" }}}'
                             """
-                        }
-                        script {
-                            archiveArtifacts artifacts: 'logs.zip'
-                            archiveArtifacts artifacts: 'tests/output/*.png'
-                        }
-                    }
-                }
-                stage('Run UI - Tests - @nightly') {
-                    options {
-                        timeout(time: 150, unit: "MINUTES")
-                    }
-                    when {
-                        expression { env.AMI_TEST == "no" }
-                    }
-                    steps {
-                        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'PMM_AWS_DEV', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                            sh """
-                                sed -i 's+http://localhost/+${PMM_UI_URL}/+g' pr.codecept.js
-                                export PWD=\$(pwd);
-                                npx codeceptjs run --reporter mocha-multi -c pr.codecept.js --grep '@nightly' --override '{ "helpers": { "Playwright": { "browser": "firefox" }}}'
-                            """
-                        }
-                        script {
-                            archiveArtifacts artifacts: 'logs.zip'
-                            archiveArtifacts artifacts: 'tests/output/*.png'
-                        }
-                    }
-                }
-                stage('Run UI - Tests - @menu') {
-                    options {
-                        timeout(time: 150, unit: "MINUTES")
-                    }
-                    when {
-                        expression { env.AMI_TEST == "no" }
-                    }
-                    steps {
-                        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'PMM_AWS_DEV', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                            sh """
-                                sed -i 's+http://localhost/+${PMM_UI_URL}/+g' pr.codecept.js
-                                export PWD=\$(pwd);
-                                npx codeceptjs run --reporter mocha-multi -c pr.codecept.js --grep '@menu' --override '{ "helpers": { "Playwright": { "browser": "firefox" }}}'
-                            """
-                        }
-                        script {
-                            archiveArtifacts artifacts: 'logs.zip'
-                            archiveArtifacts artifacts: 'tests/output/*.png'
                         }
                     }
                 }
@@ -502,16 +456,16 @@ pipeline {
             sh '''
                 curl --insecure ${PMM_URL}/logs.zip --output logs.zip || true
             '''
-            unstash 'testresult-Run UI - Tests - @menu'
-            unstash 'testresult-Run UI - Tests - @nightly'
-            unstash 'testresult-Run UI - Tests - @qan'
             script {
                 if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
                     junit 'tests/output/*.xml'
                     slackSend botUser: true, channel: '#pmm-ci', color: '#00FF00', message: "[${JOB_NAME}]: build finished - ${BUILD_URL}"
+                    archiveArtifacts artifacts: 'logs.zip'
                 } else {
                     junit 'tests/output/*.xml'
                     slackSend botUser: true, channel: '#pmm-ci', color: '#FF0000', message: "[${JOB_NAME}]: build ${currentBuild.result} - ${BUILD_URL}"
+                    archiveArtifacts artifacts: 'logs.zip'
+                    archiveArtifacts artifacts: 'tests/output/*.png'
                 }
             }
             /*
