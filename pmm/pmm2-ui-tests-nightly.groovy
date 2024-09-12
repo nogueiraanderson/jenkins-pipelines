@@ -327,7 +327,7 @@ pipeline {
                         expression { env.SERVER_TYPE == "ovf" }
                     }
                     steps {
-                        runOVFStagingStart(DOCKER_VERSION, PMM_QA_GIT_BRANCH, '--addclient=haproxy,1 --setup-alertmanager --setup-external-service')
+                        runOVFStagingStart(DOCKER_VERSION, PMM_QA_GIT_BRANCH, '--addclient=haproxy,1 --setup-alertmanager')
                     }
                 }
                 stage('Setup AMI Server Instance') {
