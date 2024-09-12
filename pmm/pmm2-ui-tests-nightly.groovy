@@ -29,10 +29,11 @@ void runStagingServer(String DOCKER_VERSION, CLIENT_VERSION, CLIENTS, CLIENT_INS
     }
 }
 
-void runOVFStagingStart(String SERVER_VERSION, PMM_QA_GIT_BRANCH) {
+void runOVFStagingStart(String SERVER_VERSION, PMM_QA_GIT_BRANCH, CLIENTS) {
     ovfStagingJob = build job: 'pmm2-ovf-staging-start', parameters: [
         string(name: 'OVA_VERSION', value: SERVER_VERSION),      
         string(name: 'PMM_QA_GIT_BRANCH', value: PMM_QA_GIT_BRANCH),
+        string(name: 'CLIENTS', value: CLIENTS),
     ]
     env.OVF_INSTANCE_NAME = ovfStagingJob.buildVariables.VM_NAME
     env.OVF_INSTANCE_IP = ovfStagingJob.buildVariables.IP
@@ -326,7 +327,7 @@ pipeline {
                         expression { env.SERVER_TYPE == "ovf" }
                     }
                     steps {
-                        runOVFStagingStart(DOCKER_VERSION, PMM_QA_GIT_BRANCH)
+                        runOVFStagingStart(DOCKER_VERSION, PMM_QA_GIT_BRANCH, '--addclient=haproxy,1 --setup-alertmanager --setup-external-service')
                     }
                 }
                 stage('Setup AMI Server Instance') {
