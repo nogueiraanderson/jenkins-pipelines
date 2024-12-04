@@ -111,7 +111,7 @@ void runStagingClient(String DOCKER_VERSION, CLIENT_VERSION, CLIENTS, CLIENT_INS
 void checkClientNodesAgentStatus(String VM_CLIENT_IP) {
     withCredentials([sshUserPrivateKey(credentialsId: 'aws-jenkins', keyFileVariable: 'KEY_PATH', passphraseVariable: '', usernameVariable: 'USER')]) {
         sh """
-            ssh -i "${KEY_PATH}" -o ConnectTimeout=1 -o StrictHostKeyChecking=no ${USER}@${VM_CLIENT_IP} '
+            ssh -i "${KEY_PATH}" -o ConnectTimeout=15 -o StrictHostKeyChecking=no ${USER}@${VM_CLIENT_IP} '
                 pmm-admin status
                 set -o errexit
                 set -o xtrace
