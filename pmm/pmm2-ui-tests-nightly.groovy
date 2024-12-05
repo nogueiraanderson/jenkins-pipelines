@@ -13,8 +13,8 @@ void runStagingServer(String DOCKER_VERSION, CLIENT_VERSION, CLIENTS, CLIENT_INS
         string(name: 'SERVER_IP', value: SERVER_IP),
         string(name: 'NOTIFY', value: 'false'),
         string(name: 'DAYS', value: '1'),
+        string(name: 'SSH_KEY', value: SSH_KEY),
         string(name: 'ADMIN_PASSWORD', value: ADMIN_PASSWORD)
-        string(name: 'SSH_KEY', value: SSH_KEY)
     ]
     env.VM_IP = stagingJob.buildVariables.IP
     env.VM_NAME = stagingJob.buildVariables.VM_NAME
@@ -78,7 +78,7 @@ void runStagingClient(String DOCKER_VERSION, CLIENT_VERSION, CLIENTS, CLIENT_INS
         string(name: 'MODB_VERSION', value: MODB_VERSION),
         string(name: 'QUERY_SOURCE', value: QUERY_SOURCE),
         string(name: 'ADMIN_PASSWORD', value: ADMIN_PASSWORD),
-        string(name: 'PMM_QA_GIT_BRANCH', value: PMM_QA_GIT_BRANCH)
+        string(name: 'PMM_QA_GIT_BRANCH', value: PMM_QA_GIT_BRANCH),
         string(name: 'SSH_KEY', value: SSH_KEY)
     ]
     if ( NODE_TYPE == 'mysql-node' ) {
