@@ -3,7 +3,7 @@ library changelog: false, identifier: 'lib@master', retriever: modernSCM([
     remote: 'https://github.com/Percona-Lab/jenkins-pipelines.git'
 ]) _
 
-void runStagingServer(String DOCKER_VERSION, CLIENT_VERSION, CLIENTS, CLIENT_INSTANCE, SERVER_IP, ADMIN_PASSWORD = "admin") {
+void runStagingServer(String DOCKER_VERSION, CLIENT_VERSION, CLIENTS, CLIENT_INSTANCE, SERVER_IP, SSH_KEY, ADMIN_PASSWORD = "admin") {
     stagingJob = build job: 'aws-staging-start', parameters: [
         string(name: 'DOCKER_VERSION', value: DOCKER_VERSION),
         string(name: 'CLIENT_VERSION', value: CLIENT_VERSION),
@@ -14,6 +14,7 @@ void runStagingServer(String DOCKER_VERSION, CLIENT_VERSION, CLIENTS, CLIENT_INS
         string(name: 'NOTIFY', value: 'false'),
         string(name: 'DAYS', value: '1'),
         string(name: 'ADMIN_PASSWORD', value: ADMIN_PASSWORD)
+        string(name: 'SSH_KEY', value: SSH_KEY)
     ]
     env.VM_IP = stagingJob.buildVariables.IP
     env.VM_NAME = stagingJob.buildVariables.VM_NAME
@@ -56,7 +57,7 @@ void runAMIStagingStart(String AMI_ID) {
     env.ADMIN_PASSWORD = "admin"
 }
 
-void runStagingClient(String DOCKER_VERSION, CLIENT_VERSION, CLIENTS, CLIENT_INSTANCE, SERVER_IP, NODE_TYPE, ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH) {
+void runStagingClient(String DOCKER_VERSION, CLIENT_VERSION, CLIENTS, CLIENT_INSTANCE, SERVER_IP, NODE_TYPE, ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH, SSH_KEY) {
     stagingJob = build job: 'aws-staging-start', parameters: [
         string(name: 'DOCKER_VERSION', value: DOCKER_VERSION),
         string(name: 'CLIENT_VERSION', value: CLIENT_VERSION),
@@ -78,6 +79,7 @@ void runStagingClient(String DOCKER_VERSION, CLIENT_VERSION, CLIENTS, CLIENT_INS
         string(name: 'QUERY_SOURCE', value: QUERY_SOURCE),
         string(name: 'ADMIN_PASSWORD', value: ADMIN_PASSWORD),
         string(name: 'PMM_QA_GIT_BRANCH', value: PMM_QA_GIT_BRANCH)
+        string(name: 'SSH_KEY', value: SSH_KEY)
     ]
     if ( NODE_TYPE == 'mysql-node' ) {
         env.VM_CLIENT_IP_MYSQL = stagingJob.buildVariables.IP
@@ -225,14 +227,10 @@ pipeline {
             choices: ['no', 'yes'],
             description: "Use this instance only as a client host",
             name: 'CLIENT_INSTANCE')
-        choice(
-            choices: ['no', 'yes'],
-            description: "Run AMI Setup Wizard for AMI UI tests",
-            name: 'AMI_TEST')
         string(
             defaultValue: '',
-            description: 'AMI Instance ID',
-            name: 'AMI_INSTANCE_ID')
+            description: 'public ssh key for "ec2-user" user, please set if you need ssh access',
+            name: 'SSH_KEY')
         choice(
             choices: ['no', 'yes'],
             description: 'Enable Pull Mode, if you are using this instance as Client Node',
@@ -320,7 +318,7 @@ pipeline {
                         expression { env.SERVER_TYPE == "docker" }
                     }
                     steps {
-                        runStagingServer(DOCKER_VERSION, CLIENT_VERSION, '--addclient=haproxy,1 --setup-alertmanager --setup-external-service', CLIENT_INSTANCE, '127.0.0.1', ADMIN_PASSWORD)
+                        runStagingServer(DOCKER_VERSION, CLIENT_VERSION, '--addclient=haproxy,1 --setup-alertmanager --setup-external-service', CLIENT_INSTANCE, '127.0.0.1', SSH_KEY, ADMIN_PASSWORD)
                     }
                 }
                 stage('Setup OVF Server Instance') {
@@ -345,22 +343,22 @@ pipeline {
             parallel {
                 stage('Start Client Instance - ps,ps-rpl,ps-gr') {
                     steps {
-                        runStagingClient(DOCKER_VERSION, CLIENT_VERSION, '--addclient=ps,1 --pmm2 --add-annotation --setup-replication-ps-pmm2 --group', 'yes', env.VM_IP, 'mysql-node', ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH)
+                        runStagingClient(DOCKER_VERSION, CLIENT_VERSION, '--addclient=ps,1 --pmm2 --add-annotation --setup-replication-ps-pmm2 --group', 'yes', env.VM_IP, 'mysql-node', ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH, SSH_KEY)
                     }
                 }
                 stage('Start Client Instance - ms & md') {
                     steps {
-                        runStagingClient(DOCKER_VERSION, CLIENT_VERSION, '--addclient=ms,1 --addclient=md,1 --pmm2', 'yes', env.VM_IP, 'pxc-node', ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH)
+                        runStagingClient(DOCKER_VERSION, CLIENT_VERSION, '--addclient=ms,1 --addclient=md,1 --pmm2', 'yes', env.VM_IP, 'pxc-node', ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH, SSH_KEY)
                     }
                 }
                 stage('Start Client Instance - mongo & pgsql') {
                     steps {
-                        runStagingClient(DOCKER_VERSION, CLIENT_VERSION, '--addclient=pgsql,1 --addclient=mo,1 --with-sharding --mongomagic', 'yes', env.VM_IP, 'mongo-node', ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH)
+                        runStagingClient(DOCKER_VERSION, CLIENT_VERSION, '--addclient=pgsql,1 --addclient=mo,1 --with-sharding --mongomagic', 'yes', env.VM_IP, 'mongo-node', ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH, SSH_KEY)
                     }
                 }
                 stage('Start Client Instance - pdpgsql & pxc') {
                     steps {
-                        runStagingClient(DOCKER_VERSION, CLIENT_VERSION, '--addclient=pdpgsql,1 --addclient=pxc,3 --pmm2', 'yes', env.VM_IP, 'postgres-node', ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH)
+                        runStagingClient(DOCKER_VERSION, CLIENT_VERSION, '--addclient=pdpgsql,1 --addclient=pxc,3 --pmm2', 'yes', env.VM_IP, 'postgres-node', ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH, SSH_KEY)
                     }
                 }
             }
