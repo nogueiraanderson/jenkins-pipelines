@@ -93,6 +93,10 @@ void runStagingClient(String DOCKER_VERSION, CLIENT_VERSION, CLIENTS, CLIENT_INS
         env.VM_CLIENT_IP_PGSQL = stagingJob.buildVariables.IP
         env.VM_CLIENT_NAME_PGSQL = stagingJob.buildVariables.VM_NAME
     }
+    else if ( NODE_TYPE == 'mongo-sharding' ) {
+        env.VM_CLIENT_IP_MONGO_SHARDING = stagingJob.buildVariables.IP
+        env.VM_CLIENT_NAME_MONGO_SHARDING = stagingJob.buildVariables.VM_NAME
+    }
     else
     {
         env.VM_CLIENT_IP_MONGO = stagingJob.buildVariables.IP
@@ -353,7 +357,12 @@ pipeline {
                 }
                 stage('Start Client Instance - mongo & pgsql') {
                     steps {
-                        runStagingClient(DOCKER_VERSION, CLIENT_VERSION, '--addclient=pgsql,1 --mongomagic --with-sharding', 'yes', env.VM_IP, 'mongo-node', ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH, SSH_KEY)
+                        runStagingClient(DOCKER_VERSION, CLIENT_VERSION, '--addclient=pgsql,1 --addclient=mo,1', 'yes', env.VM_IP, 'mongo-node', ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH, SSH_KEY)
+                    }
+                }
+                stage('Start Client Instance - mongo sharding') {
+                    steps {
+                        runStagingClient(DOCKER_VERSION, CLIENT_VERSION, '--addclient=pgsql,1 --mongomagic --with-sharding', 'yes', env.VM_IP, 'mongo-sharding', ENABLE_PULL_MODE, PXC_VERSION, PS_VERSION, MS_VERSION, PGSQL_VERSION, PDPGSQL_VERSION, MD_VERSION, MO_VERSION, MODB_VERSION, QUERY_SOURCE, ADMIN_PASSWORD, PMM_QA_GIT_BRANCH, SSH_KEY)
                     }
                 }
                 stage('Start Client Instance - pdpgsql & pxc') {
@@ -436,9 +445,14 @@ pipeline {
                         checkClientNodesAgentStatus(env.VM_CLIENT_IP_PXC)
                     }
                 }
-                stage('Check Agent Status on mongo node') {
+                stage('Check Agent Status on pdpgsql mongo node') {
                     steps {
                         checkClientNodesAgentStatus(env.VM_CLIENT_IP_MONGO)
+                    }
+                }
+                stage('Check Agent Status on mongo sharding node') {
+                    steps {
+                        checkClientNodesAgentStatus(env.VM_CLIENT_IP_MONGO_SHARDING)
                     }
                 }
                 stage('Check Agent Status on postgresql node') {
