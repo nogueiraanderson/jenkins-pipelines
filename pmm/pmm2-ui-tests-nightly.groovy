@@ -469,7 +469,7 @@ pipeline {
                         checkClientNodesAgentStatus(env.VM_CLIENT_IP_PGSQL)
                     }
                 }
-                stage('Check Agent Status on postgresql node') {
+                stage('Check Agent Status on pxc node') {
                     steps {
                         checkClientNodesAgentStatus(env.VM_CLIENT_IP_PXC_NODE)
                     }
