@@ -261,7 +261,7 @@ pipeline {
 
                 slackSend botUser: true, channel: '#pmm-notifications', color: '#0000FF', message: "[${JOB_NAME}]: build started - ${BUILD_URL}"
                 sh '''
-                    sudo mkdir -p /srv/qa-integration || :
+                    sudo mkdir -p /srv/qa-integration || true
                     sudo git clone --single-branch --branch \${QA_INTEGRATION_GIT_BRANCH} https://github.com/Percona-Lab/qa-integration.git /srv/qa-integration
                     sudo chmod -R 755 /srv/qa-integration
 
