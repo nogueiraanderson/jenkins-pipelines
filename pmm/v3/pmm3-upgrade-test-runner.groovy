@@ -202,26 +202,27 @@ pipeline {
         stage('Start Server Instance') {
             steps {
                 script {
-                sh '''
-                    sudo mkdir -p /srv/qa-integration || true
-                    pushd /srv/qa-integration
-                        sudo git clone --single-branch --branch \${QA_INTEGRATION_GIT_BRANCH} https://github.com/Percona-Lab/qa-integration.git .
-                    popd
-                    sudo chown ec2-user -R /srv/qa-integration
+                    sh '''
+                        sudo mkdir -p /srv/qa-integration || true
+                        pushd /srv/qa-integration
+                            sudo git clone --single-branch --branch \${QA_INTEGRATION_GIT_BRANCH} https://github.com/Percona-Lab/qa-integration.git .
+                        popd
+                        sudo chown ec2-user -R /srv/qa-integration
 
-                    docker network create pmm-qa
-                    docker volume create pmm-volume
+                        docker network create pmm-qa
+                        docker volume create pmm-volume
 
-                    docker run --detach --restart always \
-                        --network="pmm-qa" \
-                        -e WATCHTOWER_DEBUG=1 \
-                        -e WATCHTOWER_HTTP_API_TOKEN=testUpgradeToken \
-                        -e WATCHTOWER_HTTP_API_UPDATE=1 \
-                        --volume /var/run/docker.sock:/var/run/docker.sock \
-                        --name watchtower \
-                        perconalab/watchtower:latest
-                    sleep 10
-                '''
+                        docker run --detach --restart always \
+                            --network="pmm-qa" \
+                            -e WATCHTOWER_DEBUG=1 \
+                            -e WATCHTOWER_HTTP_API_TOKEN=testUpgradeToken \
+                            -e WATCHTOWER_HTTP_API_UPDATE=1 \
+                            --volume /var/run/docker.sock:/var/run/docker.sock \
+                            --name watchtower \
+                            perconalab/watchtower:latest
+                        sleep 10
+                    '''
+                }
                 if (env.UPGRADE_FLAG == "EXTERNAL-DATA-SOURCES") {
                     sh '''
                         export DOCKER_TAG_UPGRADE=\${DOCKER_TAG_UPGRADE}
@@ -324,13 +325,13 @@ pipeline {
                         fi
                     '''
                }
-                waitForContainer('pmm-server', 'pmm-managed entered RUNNING state')
-                waitForContainer('pmm-server', 'The HTTP API is enabled at :8080.')
-                script {
-                    env.SERVER_IP = "127.0.0.1"
-                    env.PMM_UI_URL = "http://${env.SERVER_IP}/"
-                    env.PMM_URL = "http://admin:admin@${env.SERVER_IP}"
-                }
+               waitForContainer('pmm-server', 'pmm-managed entered RUNNING state')
+               waitForContainer('pmm-server', 'The HTTP API is enabled at :8080.')
+               script {
+                   env.SERVER_IP = "127.0.0.1"
+                   env.PMM_UI_URL = "http://${env.SERVER_IP}/"
+                   env.PMM_URL = "http://admin:admin@${env.SERVER_IP}"
+               }
             }
         }
 
