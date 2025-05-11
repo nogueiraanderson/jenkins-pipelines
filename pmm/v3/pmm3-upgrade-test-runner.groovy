@@ -222,108 +222,108 @@ pipeline {
                             perconalab/watchtower:latest
                         sleep 10
                     '''
-                }
-                if (env.UPGRADE_FLAG == "EXTERNAL-DATA-SOURCES") {
-                    sh '''
-                        export DOCKER_TAG_UPGRADE=\${DOCKER_TAG_UPGRADE}
+                    if (env.UPGRADE_FLAG == "EXTERNAL-DATA-SOURCES") {
+                        sh '''
+                            export DOCKER_TAG_UPGRADE=\${DOCKER_TAG_UPGRADE}
 
-                        if [[ -z \$DOCKER_TAG_UPGRADE ]]; then
-                            docker run --detach --restart always \
-                                --network="pmm-qa" \
-                                -e PMM_DEBUG=1 \
-                                -e PMM_WATCHTOWER_HOST=http://watchtower:8080 \
-                                -e PMM_WATCHTOWER_TOKEN=testUpgradeToken \
-                                -e PMM_DEV_PERCONA_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
-                                -e PERCONA_TEST_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
-                                -e PMM_DEV_PORTAL_URL=https://portal-dev.percona.com \
-                                -e PMM_DEV_PERCONA_PLATFORM_PUBLIC_KEY=RWTkF7Snv08FCboTne4djQfN5qbrLfAjb8SY3/wwEP+X5nUrkxCEvUDJ \
-                                -e PMM_ENABLE_UPDATES=1 \
-                                --publish 80:8080 --publish 443:8443 \
-                                --volume pmm-volume:/srv \
-                                --name pmm-server \
-                                ${DOCKER_TAG}
-                        else
-                            docker run --detach --restart always \
-                                --network="pmm-qa" \
-                                -e PMM_DEBUG=1 \
-                                -e PMM_WATCHTOWER_HOST=http://watchtower:8080 \
-                                -e PMM_WATCHTOWER_TOKEN=testUpgradeToken \
-                                -e PMM_DEV_PERCONA_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
-                                -e PERCONA_TEST_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
-                                -e PMM_DEV_PORTAL_URL=https://portal-dev.percona.com \
-                                -e PMM_DEV_PERCONA_PLATFORM_PUBLIC_KEY=RWTkF7Snv08FCboTne4djQfN5qbrLfAjb8SY3/wwEP+X5nUrkxCEvUDJ \
-                                -e PMM_ENABLE_UPDATES=1 \
-                                -e PMM_DEV_UPDATE_DOCKER_IMAGE=\${DOCKER_TAG_UPGRADE} \
-                                --publish 80:8080 --publish 443:8443 \
-                                --volume pmm-volume:/srv \
-                                --name pmm-server \
-                                \${DOCKER_TAG}
-                        fi
-                    '''
-               } else {
-                    sh '''
-                        export DOCKER_TAG_UPGRADE=\${DOCKER_TAG_UPGRADE}
+                            if [[ -z \$DOCKER_TAG_UPGRADE ]]; then
+                                docker run --detach --restart always \
+                                    --network="pmm-qa" \
+                                    -e PMM_DEBUG=1 \
+                                    -e PMM_WATCHTOWER_HOST=http://watchtower:8080 \
+                                    -e PMM_WATCHTOWER_TOKEN=testUpgradeToken \
+                                    -e PMM_DEV_PERCONA_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
+                                    -e PERCONA_TEST_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
+                                    -e PMM_DEV_PORTAL_URL=https://portal-dev.percona.com \
+                                    -e PMM_DEV_PERCONA_PLATFORM_PUBLIC_KEY=RWTkF7Snv08FCboTne4djQfN5qbrLfAjb8SY3/wwEP+X5nUrkxCEvUDJ \
+                                    -e PMM_ENABLE_UPDATES=1 \
+                                    --publish 80:8080 --publish 443:8443 \
+                                    --volume pmm-volume:/srv \
+                                    --name pmm-server \
+                                    ${DOCKER_TAG}
+                            else
+                                docker run --detach --restart always \
+                                    --network="pmm-qa" \
+                                    -e PMM_DEBUG=1 \
+                                    -e PMM_WATCHTOWER_HOST=http://watchtower:8080 \
+                                    -e PMM_WATCHTOWER_TOKEN=testUpgradeToken \
+                                    -e PMM_DEV_PERCONA_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
+                                    -e PERCONA_TEST_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
+                                    -e PMM_DEV_PORTAL_URL=https://portal-dev.percona.com \
+                                    -e PMM_DEV_PERCONA_PLATFORM_PUBLIC_KEY=RWTkF7Snv08FCboTne4djQfN5qbrLfAjb8SY3/wwEP+X5nUrkxCEvUDJ \
+                                    -e PMM_ENABLE_UPDATES=1 \
+                                    -e PMM_DEV_UPDATE_DOCKER_IMAGE=\${DOCKER_TAG_UPGRADE} \
+                                    --publish 80:8080 --publish 443:8443 \
+                                    --volume pmm-volume:/srv \
+                                    --name pmm-server \
+                                    \${DOCKER_TAG}
+                            fi
+                        '''
+                    } else {
+                        sh '''
+                            export DOCKER_TAG_UPGRADE=\${DOCKER_TAG_UPGRADE}
 
-                         docker run -d \
-                            --name external-clickhouse \
-                            --network="pmm-qa" \
-                            -e CLICKHOUSE_DB=pmm \
-                            -e CLICKHOUSE_USER=pmm \
-                            -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
-                            -e CLICKHOUSE_PASSWORD=pmm_password \
-                            --health-cmd="wget --spider -q localhost:8123/ping" \
-                            --health-interval=30s \
-                            --health-timeout=10s \
-                            --health-retries=3 \
-                            clickhouse/clickhouse-server:latest
+                             docker run -d \
+                                --name external-clickhouse \
+                                --network="pmm-qa" \
+                                -e CLICKHOUSE_DB=pmm \
+                                -e CLICKHOUSE_USER=pmm \
+                                -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
+                                -e CLICKHOUSE_PASSWORD=pmm_password \
+                                --health-cmd="wget --spider -q localhost:8123/ping" \
+                                --health-interval=30s \
+                                --health-timeout=10s \
+                                --health-retries=3 \
+                                clickhouse/clickhouse-server:latest
 
-                        if [[ -z \$DOCKER_TAG_UPGRADE ]]; then
-                            docker run --detach --restart always \
-                                --network="pmm-qa" \
-                                -e PMM_DEBUG=1 \
-                                -e PMM_WATCHTOWER_HOST=http://watchtower:8080 \
-                                -e PMM_WATCHTOWER_TOKEN=testUpgradeToken \
-                                -e PMM_DEV_PERCONA_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
-                                -e PERCONA_TEST_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
-                                -e PMM_DEV_PORTAL_URL=https://portal-dev.percona.com \
-                                -e PMM_DEV_PERCONA_PLATFORM_PUBLIC_KEY=RWTkF7Snv08FCboTne4djQfN5qbrLfAjb8SY3/wwEP+X5nUrkxCEvUDJ \
-                                -e PMM_ENABLE_UPDATES=1 \
-                                -e PMM_CLICKHOUSE_ADDR=external-clickhouse:9000 \
-                                -e PMM_CLICKHOUSE_DATASOURCE=external-clickhouse:8123 \
-                                -e PMM_CLICKHOUSE_DATABASE=pmm \
-                                -e PMM_DISABLE_BUILTIN_CLICKHOUSE=1 \
-                                -e PMM_ENABLE_TELEMETRY=0 \
-                                -e PMM_CLICKHOUSE_PASSWORD=pmm_password \
-                                -e PMM_CLICKHOUSE_USER=pmm \
-                                --publish 80:8080 --publish 443:8443 \
-                                --volume pmm-volume:/srv \
-                                --name pmm-server \
-                                ${DOCKER_TAG}
-                        else
-                            docker run --detach --restart always \
-                                --network="pmm-qa" \
-                                -e PMM_DEBUG=1 \
-                                -e PMM_WATCHTOWER_HOST=http://watchtower:8080 \
-                                -e PMM_WATCHTOWER_TOKEN=testUpgradeToken \
-                                -e PMM_DEV_PERCONA_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
-                                -e PERCONA_TEST_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
-                                -e PMM_DEV_PORTAL_URL=https://portal-dev.percona.com \
-                                -e PMM_DEV_PERCONA_PLATFORM_PUBLIC_KEY=RWTkF7Snv08FCboTne4djQfN5qbrLfAjb8SY3/wwEP+X5nUrkxCEvUDJ \
-                                -e PMM_ENABLE_UPDATES=1 \
-                                -e PMM_DEV_UPDATE_DOCKER_IMAGE=\${DOCKER_TAG_UPGRADE} \
-                                -e PMM_CLICKHOUSE_ADDR=external-clickhouse:9000 \
-                                -e PMM_CLICKHOUSE_DATASOURCE=external-clickhouse:8123 \
-                                -e PMM_CLICKHOUSE_DATABASE=pmm \
-                                -e PMM_DISABLE_BUILTIN_CLICKHOUSE=1 \
-                                -e PMM_ENABLE_TELEMETRY=0 \
-                                -e PMM_CLICKHOUSE_PASSWORD=pmm_password \
-                                -e PMM_CLICKHOUSE_USER=pmm \
-                                --publish 80:8080 --publish 443:8443 \
-                                --volume pmm-volume:/srv \
-                                --name pmm-server \
-                                \${DOCKER_TAG}
-                        fi
-                    '''
+                            if [[ -z \$DOCKER_TAG_UPGRADE ]]; then
+                                docker run --detach --restart always \
+                                    --network="pmm-qa" \
+                                    -e PMM_DEBUG=1 \
+                                    -e PMM_WATCHTOWER_HOST=http://watchtower:8080 \
+                                    -e PMM_WATCHTOWER_TOKEN=testUpgradeToken \
+                                    -e PMM_DEV_PERCONA_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
+                                    -e PERCONA_TEST_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
+                                    -e PMM_DEV_PORTAL_URL=https://portal-dev.percona.com \
+                                    -e PMM_DEV_PERCONA_PLATFORM_PUBLIC_KEY=RWTkF7Snv08FCboTne4djQfN5qbrLfAjb8SY3/wwEP+X5nUrkxCEvUDJ \
+                                    -e PMM_ENABLE_UPDATES=1 \
+                                    -e PMM_CLICKHOUSE_ADDR=external-clickhouse:9000 \
+                                    -e PMM_CLICKHOUSE_DATASOURCE=external-clickhouse:8123 \
+                                    -e PMM_CLICKHOUSE_DATABASE=pmm \
+                                    -e PMM_DISABLE_BUILTIN_CLICKHOUSE=1 \
+                                    -e PMM_ENABLE_TELEMETRY=0 \
+                                    -e PMM_CLICKHOUSE_PASSWORD=pmm_password \
+                                    -e PMM_CLICKHOUSE_USER=pmm \
+                                    --publish 80:8080 --publish 443:8443 \
+                                    --volume pmm-volume:/srv \
+                                    --name pmm-server \
+                                    ${DOCKER_TAG}
+                            else
+                                docker run --detach --restart always \
+                                    --network="pmm-qa" \
+                                    -e PMM_DEBUG=1 \
+                                    -e PMM_WATCHTOWER_HOST=http://watchtower:8080 \
+                                    -e PMM_WATCHTOWER_TOKEN=testUpgradeToken \
+                                    -e PMM_DEV_PERCONA_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
+                                    -e PERCONA_TEST_PLATFORM_ADDRESS=https://check-dev.percona.com:443 \
+                                    -e PMM_DEV_PORTAL_URL=https://portal-dev.percona.com \
+                                    -e PMM_DEV_PERCONA_PLATFORM_PUBLIC_KEY=RWTkF7Snv08FCboTne4djQfN5qbrLfAjb8SY3/wwEP+X5nUrkxCEvUDJ \
+                                    -e PMM_ENABLE_UPDATES=1 \
+                                    -e PMM_DEV_UPDATE_DOCKER_IMAGE=\${DOCKER_TAG_UPGRADE} \
+                                    -e PMM_CLICKHOUSE_ADDR=external-clickhouse:9000 \
+                                    -e PMM_CLICKHOUSE_DATASOURCE=external-clickhouse:8123 \
+                                    -e PMM_CLICKHOUSE_DATABASE=pmm \
+                                    -e PMM_DISABLE_BUILTIN_CLICKHOUSE=1 \
+                                    -e PMM_ENABLE_TELEMETRY=0 \
+                                    -e PMM_CLICKHOUSE_PASSWORD=pmm_password \
+                                    -e PMM_CLICKHOUSE_USER=pmm \
+                                    --publish 80:8080 --publish 443:8443 \
+                                    --volume pmm-volume:/srv \
+                                    --name pmm-server \
+                                    \${DOCKER_TAG}
+                            fi
+                        '''
+                    }
                }
                waitForContainer('pmm-server', 'pmm-managed entered RUNNING state')
                waitForContainer('pmm-server', 'The HTTP API is enabled at :8080.')
