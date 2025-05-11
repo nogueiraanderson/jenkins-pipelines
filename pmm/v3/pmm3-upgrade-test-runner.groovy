@@ -222,7 +222,7 @@ pipeline {
                         perconalab/watchtower:latest
                     sleep 10
                 '''
-                if env.UPGRADE_FLAG == "EXTERNAL-DATA-SOURCES") {
+                if (env.UPGRADE_FLAG == "EXTERNAL-DATA-SOURCES") {
                     sh '''
                         export DOCKER_TAG_UPGRADE=\${DOCKER_TAG_UPGRADE}
 
