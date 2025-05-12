@@ -286,6 +286,9 @@ pipeline {
                                     --name pmm-server \
                                     \${DOCKER_TAG}
                             fi
+
+                            sleep 30
+                            docker ps -a
                        '''
                     } else {
                          sh '''
