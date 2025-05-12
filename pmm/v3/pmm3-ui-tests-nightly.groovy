@@ -277,7 +277,7 @@ pipeline {
                         expression { env.SERVER_TYPE == "docker" }
                     }
                     steps {
-                        runStagingServer(DOCKER_VERSION, CLIENT_VERSION, '--help', 'no', '127.0.0.1', PMM_QA_GIT_BRANCH, ADMIN_PASSWORD)
+                        runStagingServer(DOCKER_VERSION, CLIENT_VERSION, '--help', 'no', '127.0.0.1', QA_INTEGRATION_GIT_BRANCH, ADMIN_PASSWORD)
                     }
                 }
                 stage('Setup OVF Server Instance') {
