@@ -436,6 +436,7 @@ pipeline {
                     sh '''
                         export PMM_VERSION=\$(curl --location --user admin:admin 'http://localhost/v1/server/version' | jq -r '.version' | awk -F "-" \'{print \$1}\')
                         sudo chmod 755 /srv/pmm-qa/pmm-tests/check_upgrade.py
+                        supervisorctl tail -5000 qan-api2 stderr
                         docker exec pmm-server supervisorctl status
                         python3 /srv/pmm-qa/pmm-tests/check_upgrade.py -v \$PMM_VERSION -p pre
                     '''
