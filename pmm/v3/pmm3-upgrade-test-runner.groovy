@@ -79,6 +79,10 @@ pipeline {
             defaultValue: 'v3',
             description: 'Tag/Branch for UI Tests repository',
             name: 'PMM_UI_GIT_BRANCH')
+        choice(
+            choices: ["SSL", "EXTERNAL SERVICES", "MONGO BACKUP", "CUSTOM PASSWORD", "CUSTOM DASHBOARDS", "ANNOTATIONS-PROMETHEUS", "ADVISORS-ALERTING", "SETTINGS-METRICS", "EXTERNAL-DATA-SOURCES"],
+            description: 'Subset of tests for the upgrade',
+            name: 'UPGRADE_FLAG')
         string(
             defaultValue: 'percona/pmm-server:3.1.0',
             description: 'PMM Server Version to test for Upgrade',
@@ -107,10 +111,6 @@ pipeline {
             defaultValue: 'v3',
             description: 'Tag/Branch for qa-integration repository',
             name: 'QA_INTEGRATION_GIT_BRANCH')
-        choice(
-            choices: ["SSL", "EXTERNAL SERVICES", "MONGO BACKUP", "CUSTOM PASSWORD", "CUSTOM DASHBOARDS", "ANNOTATIONS-PROMETHEUS", "ADVISORS-ALERTING", "SETTINGS-METRICS", "EXTERNAL-DATA-SOURCES"],
-            description: 'Subset of tests for the upgrade',
-            name: 'UPGRADE_FLAG')
         string(
             defaultValue: '8.0',
             description: "Percona Server for MySQL version",
