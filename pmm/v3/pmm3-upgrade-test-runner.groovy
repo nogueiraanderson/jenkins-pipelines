@@ -226,6 +226,7 @@ pipeline {
                     if (env.UPGRADE_FLAG == "EXTERNAL-DATA-SOURCES") {
                         sh '''
                             export DOCKER_TAG_UPGRADE=\${DOCKER_TAG_UPGRADE}
+                            echo "\$UPGRADE_FLAG is the upgrade flag"
 
                             if [[ -z \$DOCKER_TAG_UPGRADE ]]; then
                                 docker run --detach --restart always \
