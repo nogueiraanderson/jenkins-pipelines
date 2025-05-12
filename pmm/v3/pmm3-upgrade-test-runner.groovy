@@ -193,7 +193,7 @@ pipeline {
                     } else if (env.UPGRADE_FLAG == "EXTERNAL-DATA-SOURCES") {
                         env.PRE_UPGRADE_FLAG = "@pre-external-data-sources-upgrade"
                         env.POST_UPGRADE_FLAG = "@post-external-data-sources-upgrade"
-                        env.PMM_CLIENTS = "--database pgsql --database ps --database psmdb"
+                        env.PMM_CLIENTS = "--database ps"
                     }
 
                 }
