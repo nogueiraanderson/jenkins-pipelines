@@ -289,6 +289,7 @@ pipeline {
 
                             sleep 30
                             docker ps -a
+                            docker logs pmm-server
                        '''
                     } else {
                          sh '''
