@@ -187,7 +187,7 @@ def destroy(Map config) {
 
     def params = config
 
-    openshiftTools.log('INFO', "Destroying OpenShift cluster: ${params.clusterName}", params)
+    openshiftTools.log('INFO', "Destroying OpenShift cluster: ${params.clusterName}")
 
     try {
         // Get metadata and cluster state from S3
@@ -231,7 +231,7 @@ def destroy(Map config) {
 
         // Destroy the cluster
         if (stateExists) {
-            openshiftTools.log('INFO', 'Destroying OpenShift cluster...', params)
+            openshiftTools.log('INFO', 'Destroying OpenShift cluster...')
             sh """
                 export PATH="\$HOME/.local/bin:\$PATH"
                 cd ${clusterDir}
