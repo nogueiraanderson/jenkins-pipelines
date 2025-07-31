@@ -117,6 +117,25 @@ def create(Map config) {
         // Step 9: Get cluster info
         def clusterInfo = getClusterInfo(clusterDir)
 
+        // Validate critical files exist
+        def criticalFiles = [
+            "${clusterDir}/auth/kubeconfig",
+            "${clusterDir}/auth/kubeadmin-password"
+        ]
+        criticalFiles.each { file ->
+            if (!fileExists(file)) {
+                error "Critical file missing after cluster creation: ${file}"
+            }
+        }
+
+        // Create additional backup of auth directory in S3
+        sh """
+            cd ${clusterDir}
+            tar -czf auth-backup.tar.gz auth/
+            aws s3 cp auth-backup.tar.gz s3://${params.s3Bucket}/${params.clusterName}/auth-backup.tar.gz
+            rm -f auth-backup.tar.gz
+        """
+
         // Step 10: Deploy PMM if requested
         if (params.deployPMM) {
             env.KUBECONFIG = "${clusterDir}/auth/kubeconfig"
@@ -172,13 +191,15 @@ def destroy(Map config) {
 
     try {
         // Get metadata and cluster state from S3
-        def metadata = openshiftS3.getMetadata([
+        def metadataResult = openshiftS3.getMetadata([
             bucket: params.s3Bucket,
             clusterName: params.clusterName,
             region: params.awsRegion,
             accessKey: env.AWS_ACCESS_KEY_ID,
             secretKey: env.AWS_SECRET_ACCESS_KEY
         ])
+        // Convert LazyMap to regular HashMap to avoid serialization issues
+        def metadata = metadataResult ? new HashMap(metadataResult) : null
 
         if (!metadata) {
             error "No metadata found for cluster ${params.clusterName}."

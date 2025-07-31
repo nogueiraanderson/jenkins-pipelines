@@ -116,8 +116,15 @@ pipeline {
                             env.PMM_URL = clusterInfo.pmm.url
                         }
 
-                        // Archive credentials
-                        archiveArtifacts artifacts: "${env.FINAL_CLUSTER_NAME}/auth/**", fingerprint: true
+                        // Archive credentials with correct path
+                        def clusterPath = "openshift-clusters/${env.FINAL_CLUSTER_NAME}"
+                        if (fileExists("${clusterPath}/auth")) {
+                            archiveArtifacts artifacts: "${clusterPath}/auth/**",
+                                           fingerprint: true,
+                                           allowEmptyArchive: false
+                        } else {
+                            error "Critical: Auth directory not found at ${clusterPath}/auth"
+                        }
                     }
                 }
             }
@@ -157,6 +164,22 @@ pipeline {
             script {
                 echo "Cluster ${env.FINAL_CLUSTER_NAME} created successfully"
 
+                // Always archive kubeconfig on success as a fallback
+                if (env.WORK_DIR && env.FINAL_CLUSTER_NAME) {
+                    def criticalFiles = [
+                        "${env.WORK_DIR}/${env.FINAL_CLUSTER_NAME}/auth/kubeconfig",
+                        "${env.WORK_DIR}/${env.FINAL_CLUSTER_NAME}/auth/kubeadmin-password"
+                    ]
+                    criticalFiles.each { file ->
+                        if (fileExists(file)) {
+                            def relativePath = file.replaceFirst("${env.WORKSPACE}/", "")
+                            archiveArtifacts artifacts: relativePath,
+                                           fingerprint: true,
+                                           allowEmptyArchive: false
+                        }
+                    }
+                }
+
                 // Send notification if configured
                 if (env.SLACK_WEBHOOK) {
                     slackSend(
@@ -180,6 +203,9 @@ pipeline {
                     archiveArtifacts artifacts: "${clusterPath}/metadata.json", allowEmptyArchive: true
                     archiveArtifacts artifacts: "${clusterPath}/.openshift_install.log", allowEmptyArchive: true
                     archiveArtifacts artifacts: "${clusterPath}/install-config.yaml.backup", allowEmptyArchive: true
+
+                    // Always try to archive auth files in failure
+                    archiveArtifacts artifacts: "${clusterPath}/auth/**", allowEmptyArchive: true
                 }
 
                 // Attempt cleanup if cluster creation failed
@@ -208,7 +234,7 @@ pipeline {
                                 ])
                             }
                         } catch (Exception e) {
-                            echo "Cleanup failed: ${e.message}"
+                            echo "Cleanup failed: ${e.toString()}"
                         }
                     }
                 }
