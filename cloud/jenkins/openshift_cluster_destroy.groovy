@@ -117,10 +117,9 @@ pipeline {
                             hasRemainingResources = true
                         }
 
-                        // Store result - convert to HashMap to avoid LazyMap serialization
-                        if (result && result instanceof Map) {
-                            def safeResult = new HashMap(result)
-                            env.DESTROY_RESULT = groovy.json.JsonOutput.toJson(safeResult)
+                        // Store result as JSON
+                        if (result) {
+                            env.DESTROY_RESULT = groovy.json.JsonOutput.toJson(result)
                         }
 
                         if (hasRemainingResources) {

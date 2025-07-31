@@ -191,15 +191,13 @@ def destroy(Map config) {
 
     try {
         // Get metadata and cluster state from S3
-        def metadataResult = openshiftS3.getMetadata([
+        def metadata = openshiftS3.getMetadata([
             bucket: params.s3Bucket,
             clusterName: params.clusterName,
             region: params.awsRegion,
             accessKey: env.AWS_ACCESS_KEY_ID,
             secretKey: env.AWS_SECRET_ACCESS_KEY
         ])
-        // Convert LazyMap to regular HashMap to avoid serialization issues
-        def metadata = metadataResult ? new HashMap(metadataResult) : null
 
         if (!metadata) {
             error "No metadata found for cluster ${params.clusterName}."
