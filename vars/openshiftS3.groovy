@@ -238,7 +238,9 @@ private performGetMetadata(String bucket, String clusterName, String region, Str
             def json = s3Object.getObjectContent().text
 
             if (json) {
-                def metadata = new JsonSlurper().parseText(json)
+                def lazyMap = new JsonSlurper().parseText(json)
+                // Convert LazyMap to regular HashMap to avoid serialization issues
+                def metadata = new HashMap(lazyMap)
                 return [metadata: metadata, error: null, notFound: false, fromObjectMetadata: false]
             }
         } catch (AmazonServiceException e) {

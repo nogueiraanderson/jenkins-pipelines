@@ -48,15 +48,13 @@ pipeline {
                     script {
                         // Check if cluster state exists in S3
                         // Check if state exists by trying to get metadata
-                        def metadataResult = openshiftS3.getMetadata([
+                        def metadata = openshiftS3.getMetadata([
                             bucket: env.S3_BUCKET,
                             clusterName: params.CLUSTER_NAME,
                             region: params.AWS_REGION,
                             accessKey: AWS_ACCESS_KEY_ID,
                             secretKey: AWS_SECRET_ACCESS_KEY
                         ])
-                        // Convert LazyMap to regular HashMap to avoid serialization issues
-                        def metadata = metadataResult ? new HashMap(metadataResult) : null
                         def stateExists = (metadata != null)
 
                         if (!stateExists) {
@@ -77,10 +75,9 @@ pipeline {
                             - Worker Count: ${metadata.worker_count}
                             """
 
-                            // Convert to JSON safely
-                            if (metadata && metadata instanceof Map) {
-                                def safeMetadata = new HashMap(metadata)
-                                env.CLUSTER_METADATA = groovy.json.JsonOutput.toJson(safeMetadata)
+                            // Store metadata as JSON
+                            if (metadata) {
+                                env.CLUSTER_METADATA = groovy.json.JsonOutput.toJson(metadata)
                             }
                         }
                     }
