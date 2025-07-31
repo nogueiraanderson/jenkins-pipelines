@@ -114,13 +114,19 @@ pipeline {
                         // Destroy the cluster
                         def result = openshiftCluster.destroy(destroyConfig)
 
+                        // Check for remaining resources before converting to JSON
+                        def hasRemainingResources = false
+                        if (result && result.remainingResources && result.remainingResources.size() > 0) {
+                            hasRemainingResources = true
+                        }
+
                         // Store result - convert to HashMap to avoid LazyMap serialization
                         if (result && result instanceof Map) {
                             def safeResult = new HashMap(result)
                             env.DESTROY_RESULT = groovy.json.JsonOutput.toJson(safeResult)
                         }
 
-                        if (result.remainingResources && result.remainingResources.size() > 0) {
+                        if (hasRemainingResources) {
                             echo 'WARNING: Some resources may still exist after destruction'
                             unstable 'Cluster destroyed but some resources may remain'
                         }
