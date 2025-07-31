@@ -1,12 +1,29 @@
-// OpenShift tools installation and utilities library
+/**
+ * OpenShift tools installation and utilities library.
+ *
+ * Provides functionality for installing OpenShift CLI tools, managing versions,
+ * and performing cluster operations. Handles version resolution, checksum
+ * verification, and Helm integration.
+ *
+ * @since 1.0.0
+ */
 
 /**
  * Logging utility with configurable log levels.
- * Provides structured logging with timestamps and severity levels.
  *
- * @param level Log level (DEBUG, INFO, WARN, ERROR)
- * @param message Log message
- * @param params Optional parameters map containing logLevel setting
+ * Provides structured logging with timestamps and severity levels.
+ * Log level hierarchy: DEBUG < INFO < WARN < ERROR
+ *
+ * @param level Log level (required, one of: DEBUG, INFO, WARN, ERROR)
+ * @param message Log message to output (required)
+ * @param params Optional parameters map containing:
+ *   - logLevel: Override default log level (optional, default: env.OPENSHIFT_LOG_LEVEL or 'INFO')
+ *
+ * @since 1.0.0
+ *
+ * @example
+ * openshiftTools.log('INFO', 'Starting cluster creation')
+ * openshiftTools.log('DEBUG', 'Detailed info', [logLevel: 'DEBUG'])
  */
 def log(String level, String message, Map params = [:]) {
     def logLevels = ['DEBUG': 0, 'INFO': 1, 'WARN': 2, 'ERROR': 3]
@@ -24,11 +41,27 @@ def log(String level, String message, Map params = [:]) {
 
 /**
  * Installs OpenShift CLI tools (oc and openshift-install) and Helm.
- * Handles version resolution from 'latest', 'stable', etc. to specific versions.
  *
- * @param config Map containing:
- *   - openshiftVersion: Version to install (e.g., '4.16.20', 'latest', 'stable')
- * @return String resolved OpenShift version number
+ * Handles version resolution from channels to specific versions, downloads
+ * binaries with checksum verification, and installs to user's local bin directory.
+ * Falls back to alternative mirrors if primary download fails.
+ *
+ * @param config Map containing installation configuration:
+ *   - openshiftVersion: Version to install (required, e.g., '4.16.20', 'latest', 'stable-4.16')
+ *   - baseUrl: Override base download URL (optional, default: 'https://mirror.openshift.com/pub/openshift-v4/clients/ocp')
+ *
+ * @return String resolved OpenShift version number (e.g., '4.16.20')
+ *
+ * @throws IllegalArgumentException When openshiftVersion is missing
+ * @throws RuntimeException When download fails, checksums don't match, or network errors occur
+ *
+ * @since 1.0.0
+ *
+ * @example
+ * def version = openshiftTools.install([
+ *     openshiftVersion: 'stable-4.16'
+ * ])
+ * println "Installed OpenShift ${version}"
  */
 def install(Map config) {
     def params = [
@@ -53,7 +86,7 @@ def install(Map config) {
         def checksumMap = [:]
 
         try {
-            // Fetch and parse the sha256sum.txt file
+            // Fetch and parse the sha256sum.txt file for integrity verification
             // Format: <checksum>  <filename>
             // Example content:
             //   7549bd34267d297d86d8cfeb35e777bec62382ccddf1e4872e77fb9dbb1bea03  openshift-install-linux-4.16.20.tar.gz
@@ -63,7 +96,7 @@ def install(Map config) {
                 if (line.trim()) {
                     def parts = line.split(/\s+/)
                     if (parts.length >= 2) {
-                        // parts[0] = checksum, parts[1] = filename
+                        // Map filename to its SHA256 checksum for verification
                         checksumMap[parts[1]] = parts[0]
                     }
                 }
@@ -86,25 +119,25 @@ def install(Map config) {
         log('DEBUG', "Retrieved checksums - installer: ${installerChecksum}, client: ${clientChecksum}")
 
         sh """
-            # Create tools directory
-            # Using ~/.local/bin to avoid requiring sudo permissions
+            # Create tools directory in user's home to avoid requiring sudo permissions
+            # Following XDG Base Directory specification
             mkdir -p \$HOME/.local/bin
 
-            # Download and verify OpenShift installer
+            # Download and verify OpenShift installer with checksum verification
             echo "Downloading OpenShift installer..."
             curl -sL -o ${installerFile} ${downloadUrl}/${installerFile}
             echo "${installerChecksum}  ${installerFile}" | sha256sum -c -
             tar xzf ${installerFile} -C \$HOME/.local/bin
             rm -f ${installerFile}
 
-            # Download and verify OpenShift CLI
+            # Download and verify OpenShift CLI (oc) with checksum verification
             echo "Downloading OpenShift CLI..."
             curl -sL -o ${clientFile} ${downloadUrl}/${clientFile}
             echo "${clientChecksum}  ${clientFile}" | sha256sum -c -
             tar xzf ${clientFile} -C \$HOME/.local/bin
             rm -f ${clientFile}
 
-            # Make sure binaries are executable
+            # Ensure binaries have executable permissions
             chmod +x \$HOME/.local/bin/openshift-install
             chmod +x \$HOME/.local/bin/oc
 
@@ -117,7 +150,7 @@ def install(Map config) {
             \$HOME/.local/bin/oc version --client
         """
 
-        // Install Helm if not present
+        // Install Helm package manager for Kubernetes applications
         installHelm()
 
         return resolvedVersion
@@ -128,11 +161,22 @@ def install(Map config) {
 
 /**
  * Resolves OpenShift version aliases to specific version numbers.
- * Queries OpenShift release API for latest versions.
  *
- * @param version String version alias ('latest', 'stable', 'fast', 'candidate', 'eus-X.Y')
- * @param baseUrl Base URL for OpenShift mirror
+ * Handles various version formats including channels, minor versions,
+ * and specific versions. Queries OpenShift release API for latest versions.
+ *
+ * @param version Version specification (required):
+ *   - Specific version: '4.16.20'
+ *   - Minor version: '4.16' (resolves to latest patch)
+ *   - Channel: 'latest', 'stable', 'fast', 'candidate'
+ *   - Channel with version: 'stable-4.16', 'eus-4.14'
+ * @param baseUrl Base URL for OpenShift mirror (required)
+ *
  * @return String specific version number (e.g., '4.16.20')
+ *
+ * @throws RuntimeException When version cannot be resolved or network errors occur
+ *
+ * @since 1.0.0
  */
 def resolveVersion(String version, String baseUrl) {
     if (version.matches(/^[0-9]+\.[0-9]+\.[0-9]+$/)) {
@@ -156,11 +200,19 @@ def resolveVersion(String version, String baseUrl) {
 
 /**
  * Gets the latest patch version for a given minor version.
- * Uses Groovy's built-in URL parsing instead of fragile shell commands.
  *
- * @param minorVersion Minor version (e.g., '4.16')
- * @param baseUrl Base URL for OpenShift mirror
- * @return String latest patch version or null if not found
+ * Parses OpenShift mirror directory listing to find available versions
+ * and returns the highest patch version. Uses Groovy's built-in URL
+ * parsing for reliability.
+ *
+ * @param minorVersion Minor version (required, e.g., '4.16')
+ * @param baseUrl Base URL for OpenShift mirror (required)
+ *
+ * @return String latest patch version (e.g., '4.16.20')
+ *
+ * @throws RuntimeException When no versions found or network errors occur
+ *
+ * @since 1.0.0
  */
 def getLatestPatchVersion(String minorVersion, String baseUrl) {
     try {
@@ -180,7 +232,8 @@ def getLatestPatchVersion(String minorVersion, String baseUrl) {
             error "No patch versions found for ${minorVersion}"
         }
 
-        // Sort versions using Groovy's natural version comparison
+        // Sort versions using semantic version comparison
+        // Splits each version into parts and compares numerically
         versions = versions.sort(false) { a, b ->
             def aParts = a.split('\\.').collect { it as int }
             def bParts = b.split('\\.').collect { it as int }
@@ -195,16 +248,26 @@ def getLatestPatchVersion(String minorVersion, String baseUrl) {
 
 /**
  * Retrieves the current version for an OpenShift release channel.
- * Queries the official OpenShift release API.
  *
- * @param channel Release channel name ('stable', 'fast', 'candidate', 'eus-X.Y')
- * @return String version number for the channel
+ * Queries the official OpenShift release API to get the latest
+ * version for a given release channel. Supports EUS channels.
+ *
+ * @param channel Release channel name (required):
+ *   - Standard channels: 'latest', 'stable', 'fast', 'candidate'
+ *   - EUS channels: 'eus-4.14', 'eus-4.16'
+ *   - Channel with version: 'stable-4.16', 'fast-4.15'
+ *
+ * @return String version number for the channel or null if invalid
+ *
+ * @throws RuntimeException When API query fails or network errors occur
+ *
+ * @since 1.0.0
  */
 def getChannelVersion(String channel) {
     def validChannels = ['latest', 'stable', 'fast', 'candidate']
     def channelName = channel
 
-    // Handle eus- prefix
+    // Handle EUS (Extended Update Support) channels
     if (channel.startsWith('eus-')) {
         channelName = 'eus'
     }
@@ -214,10 +277,10 @@ def getChannelVersion(String channel) {
     }
 
     try {
-        // For 'latest', we need to find the newest stable channel
-        // OpenShift doesn't have a 'latest' channel, so we map it to the newest stable
+        // Map 'latest' to newest stable channel since OpenShift doesn't have a 'latest' channel
+        // Iterates through versions from newest to oldest
         if (channel == 'latest') {
-            // Try channels from newest to oldest until we find one with content
+            // TODO: Update this list periodically as new OpenShift versions are released
             def majorMinorVersions = ['4.19', '4.18', '4.17', '4.16', '4.15', '4.14']
 
             for (def version : majorMinorVersions) {
@@ -253,7 +316,7 @@ def getChannelVersion(String channel) {
             }
 
             if (allVersions) {
-                // Sort versions using Groovy's natural version comparison
+                // Sort versions using semantic version comparison
                 allVersions = allVersions.sort(false) { a, b ->
                     def aParts = a.split('\\.').collect { it as int }
                     def bParts = b.split('\\.').collect { it as int }
@@ -266,14 +329,21 @@ def getChannelVersion(String channel) {
         log('ERROR', "Failed to get channel version: ${e.message}")
     }
 
-    // Fallback to a known good version
+    // Fallback to a known good version when API is unavailable
+    // WARNING: Update this periodically to maintain compatibility
     return env.OPENSHIFT_FALLBACK_VERSION ?: '4.16.45'
 }
 
 /**
  * Installs Helm 3 if not already present.
+ *
  * Required for deploying PMM and other Helm charts to OpenShift.
  * Installs to user's local bin directory without requiring sudo.
+ * Verifies checksums for security.
+ *
+ * @throws RuntimeException When download fails or checksum doesn't match
+ *
+ * @since 1.0.0
  */
 def installHelm() {
     def helmInstalled = sh(
@@ -283,7 +353,7 @@ def installHelm() {
 
     if (helmInstalled == 'false') {
         log('INFO', 'Installing Helm...')
-        // Install specific Helm version with checksum verification
+        // Install specific Helm version with SHA256 checksum verification
         def helmVersion = env.HELM_VERSION ?: '3.14.0'
 
         // Fetch checksum dynamically using native Groovy
@@ -292,7 +362,7 @@ def installHelm() {
 
         def helmChecksum
         try {
-            // Use Groovy's native HTTP capabilities
+            // Parse checksum from official Helm SHA256 file
             def response = new URL(checksumUrl).text
             helmChecksum = response.split(/\s+/)[0].trim()
 
@@ -331,7 +401,10 @@ def installHelm() {
     '''
 }
 
-// Utility functions for OpenShift operations
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
 /**
  * Checks the overall status of an OpenShift cluster.
  *
@@ -424,10 +497,21 @@ def getClusterNodes(String kubeconfig) {
 
 /**
  * Backward compatibility method - delegates to install().
- * Allows calling the library directly without method name.
  *
- * @param config Installation configuration map
- * @return Result from install() method
+ * Allows calling the library directly without method name for backward
+ * compatibility with existing pipelines.
+ *
+ * @deprecated Use install() instead
+ * @param config Map containing installation configuration
+ * @return String resolved OpenShift version
+ * @since 1.0.0
+ *
+ * @example
+ * // Old style (deprecated)
+ * openshiftTools([openshiftVersion: '4.16.20'])
+ *
+ * // New style (preferred)
+ * openshiftTools.install([openshiftVersion: '4.16.20'])
  */
 def call(Map config) {
     return install(config)

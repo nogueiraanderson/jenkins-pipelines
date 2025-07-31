@@ -1,29 +1,72 @@
-// Main OpenShift cluster operations library
+/**
+ * OpenShift cluster operations library for automated provisioning and management.
+ *
+ * This library provides comprehensive OpenShift cluster lifecycle management on AWS,
+ * including cluster creation, destruction, and state persistence in S3.
+ *
+ * @since 1.0.0
+ */
+
+// ============================================================================
+// Library Imports
+// ============================================================================
 import groovy.json.JsonBuilder
+
+// ============================================================================
+// Public API Methods
+// ============================================================================
 
 /**
  * Creates a new OpenShift cluster on AWS with the specified configuration.
  *
+ * This method orchestrates the complete cluster creation process including:
+ * - Parameter validation and AWS credential verification
+ * - S3 bucket creation for state persistence
+ * - OpenShift installer and CLI tools installation
+ * - Cluster provisioning via openshift-install
+ * - Optional PMM (Percona Monitoring and Management) deployment
+ * - State backup to S3 for disaster recovery
+ *
  * @param config Map containing cluster configuration:
- *   - clusterName: Name for the cluster (required, lowercase alphanumeric with hyphens)
- *   - openshiftVersion: OpenShift version to install (required, e.g., '4.16.20' or 'latest')
- *   - awsRegion: AWS region (required, currently only 'us-east-2' supported)
- *   - pullSecret: Red Hat pull secret for OpenShift (required)
+ *   - clusterName: Name for the cluster (required, lowercase alphanumeric with hyphens, max 20 chars)
+ *   - openshiftVersion: OpenShift version to install (required, e.g., '4.16.20', 'latest', 'stable-4.16')
+ *   - awsRegion: AWS region (required, currently only 'us-east-2' supported due to DNS and AMI constraints)
+ *   - pullSecret: Red Hat pull secret for OpenShift (required, obtain from cloud.redhat.com)
  *   - sshPublicKey: SSH public key for cluster access (required)
  *   - s3Bucket: S3 bucket for storing cluster state (required)
  *   - workDir: Working directory for cluster files (required)
- *   - accessKey: AWS access key (optional, falls back to env.AWS_ACCESS_KEY_ID)
- *   - secretKey: AWS secret key (optional, falls back to env.AWS_SECRET_ACCESS_KEY)
+ *   - accessKey: AWS access key (optional, default: env.AWS_ACCESS_KEY_ID)
+ *   - secretKey: AWS secret key (optional, default: env.AWS_SECRET_ACCESS_KEY)
  *   - baseDomain: Base domain for cluster URLs (optional, default: 'cd.percona.com')
  *   - masterType: EC2 instance type for masters (optional, default: 'm5.xlarge')
  *   - workerType: EC2 instance type for workers (optional, default: 'm5.large')
  *   - workerCount: Number of worker nodes (optional, default: 3)
- *   - deleteAfterHours: Auto-delete tag value (optional, default: '8')
- *   - deployPMM: Whether to deploy PMM (optional, default: true)
+ *   - deleteAfterHours: Auto-delete tag value for cleanup automation (optional, default: '8')
+ *   - deployPMM: Whether to deploy PMM after cluster creation (optional, default: true)
  *   - pmmVersion: PMM version to deploy (optional, default: '3.3.0')
- *   - pmmNamespace: Namespace for PMM deployment (optional, default: 'pmm-monitoring')
+ *   - pmmNamespace: Kubernetes namespace for PMM deployment (optional, default: 'pmm-monitoring')
  *
- * @return Map containing cluster information (apiUrl, consoleUrl, kubeconfig, pmm details)
+ * @return Map containing cluster information:
+ *   - apiUrl: Kubernetes API server URL
+ *   - consoleUrl: OpenShift web console URL
+ *   - kubeconfig: Path to kubeconfig file
+ *   - kubeadminPassword: Initial admin password
+ *   - clusterDir: Local directory containing cluster files
+ *   - pmm: PMM access details (if deployed)
+ *
+ * @throws IllegalArgumentException When required parameters are missing or invalid
+ * @throws RuntimeException When cluster creation fails or AWS resources cannot be provisioned
+ *
+ * @example
+ * def cluster = openshiftCluster.create([
+ *     clusterName: 'test-cluster-001',
+ *     openshiftVersion: '4.16.20',
+ *     awsRegion: 'us-east-2',
+ *     pullSecret: credentials('openshift-pull-secret'),
+ *     sshPublicKey: credentials('ssh-public-key'),
+ *     s3Bucket: 'openshift-clusters-bucket',
+ *     workDir: env.WORKSPACE
+ * ])
  */
 def create(Map config) {
     def required = ['clusterName', 'openshiftVersion', 'awsRegion', 'pullSecret',
@@ -59,15 +102,15 @@ def create(Map config) {
     openshiftTools.log('INFO', "Creating OpenShift cluster: ${params.clusterName}", params)
 
     try {
-        // Step 1: Validate parameters
+        // Validate cluster name format and region constraints
         openshiftTools.log('DEBUG', "Validating parameters for cluster ${params.clusterName}", params)
         validateParams(params)
 
-        // Step 2: Ensure S3 bucket exists
+        // Create or verify S3 bucket for cluster state persistence
         openshiftTools.log('DEBUG', "Ensuring S3 bucket exists: ${params.s3Bucket} in ${params.awsRegion}", params)
         openshiftS3.ensureS3BucketExists(params.s3Bucket, params.awsRegion, awsAccessKey, awsSecretKey)
 
-        // Step 3: Install OpenShift tools
+        // Install OpenShift CLI and installer binaries for specified version
         openshiftTools.log('INFO', "Installing OpenShift tools for version: ${params.openshiftVersion}", params)
         def resolvedVersion = openshiftTools.install([
             openshiftVersion: params.openshiftVersion
@@ -75,12 +118,12 @@ def create(Map config) {
         params.openshiftVersion = resolvedVersion
         openshiftTools.log('DEBUG', "Resolved OpenShift version: ${resolvedVersion}", params)
 
-        // Step 4: Prepare cluster directory
+        // Create local working directory for cluster configuration and state files
         def clusterDir = "${params.workDir}/${params.clusterName}"
         openshiftTools.log('DEBUG', "Creating cluster directory: ${clusterDir}", params)
         sh "mkdir -p ${clusterDir}"
 
-        // Step 5: Generate install config
+        // Generate OpenShift installer configuration with AWS infrastructure settings
         openshiftTools.log('DEBUG', 'Generating install-config.yaml', params)
         def installConfigData = generateInstallConfig(params)
 
@@ -89,11 +132,11 @@ def create(Map config) {
         // Also create a backup copy
         writeYaml file: "${clusterDir}/install-config.yaml.backup", data: installConfigData
 
-        // Step 6: Create cluster metadata
+        // Generate metadata for cluster tracking and lifecycle management
         openshiftTools.log('DEBUG', 'Creating cluster metadata', params)
         def metadata = createMetadata(params, clusterDir)
 
-        // Step 7: Create the cluster
+        // Execute OpenShift installer to provision AWS infrastructure and bootstrap cluster
         openshiftTools.log('INFO', 'Creating OpenShift cluster (this will take 30-45 minutes)...', params)
 
         // Print install-config.yaml content when debug mode is enabled
@@ -111,7 +154,7 @@ def create(Map config) {
             openshift-install create cluster --log-level=info
         """
 
-        // Step 8: Save cluster state to S3
+        // Persist cluster state to S3 for disaster recovery with retry logic
         retry(3) {
             openshiftS3.uploadState([
                 bucket: params.s3Bucket,
@@ -124,7 +167,7 @@ def create(Map config) {
             ])
         }
 
-        // Step 9: Get cluster info
+        // Extract cluster access information from generated files
         def clusterInfo = getClusterInfo(clusterDir)
 
         // Validate critical files exist
@@ -146,7 +189,7 @@ def create(Map config) {
             rm -f auth-backup.tar.gz
         """
 
-        // Step 10: Deploy PMM if requested
+        // Deploy Percona Monitoring and Management if enabled
         if (params.deployPMM) {
             env.KUBECONFIG = "${clusterDir}/auth/kubeconfig"
             def pmmInfo = deployPMM(params)
@@ -179,15 +222,37 @@ def create(Map config) {
 /**
  * Destroys an existing OpenShift cluster and cleans up associated resources.
  *
- * @param config Map containing:
+ * This method handles the complete cluster teardown process including:
+ * - Downloading cluster state from S3
+ * - Running openshift-install destroy command
+ * - Cleaning up S3 state files
+ * - Handling partial deletion scenarios
+ *
+ * @param config Map containing cluster destruction configuration:
  *   - clusterName: Name of the cluster to destroy (required)
  *   - s3Bucket: S3 bucket containing cluster state (required)
  *   - awsRegion: AWS region where cluster exists (required)
  *   - workDir: Working directory (required)
- *   - accessKey: AWS access key (optional, falls back to env.AWS_ACCESS_KEY_ID)
- *   - secretKey: AWS secret key (optional, falls back to env.AWS_SECRET_ACCESS_KEY)
+ *   - accessKey: AWS access key (optional, default: env.AWS_ACCESS_KEY_ID)
+ *   - secretKey: AWS secret key (optional, default: env.AWS_SECRET_ACCESS_KEY)
  *
- * @return Map with destruction status
+ * @return Map containing destruction status:
+ *   - status: 'destroyed' or 'partial'
+ *   - message: Detailed status message
+ *   - remainingResources: List of resources that couldn't be deleted (if any)
+ *
+ * @throws IllegalArgumentException When required parameters are missing
+ * @throws RuntimeException When cluster state cannot be found or destruction fails
+ *
+ * @since 1.0.0
+ *
+ * @example
+ * openshiftCluster.destroy([
+ *     clusterName: 'test-cluster-001',
+ *     s3Bucket: 'openshift-clusters-bucket',
+ *     awsRegion: 'us-east-2',
+ *     workDir: env.WORKSPACE
+ * ])
  */
 def destroy(Map config) {
     def required = ['clusterName', 's3Bucket', 'awsRegion', 'workDir']
@@ -368,12 +433,13 @@ def validateParams(Map params) {
         error 'Cluster name too long. Maximum 20 characters.'
     }
 
-    // Validate OpenShift version format
+    // Validate OpenShift version format - supports channels and specific versions
     if (!params.openshiftVersion.matches(/^(latest|stable|fast|candidate|eus-[0-9]+\.[0-9]+|latest-[0-9]+\.[0-9]+|stable-[0-9]+\.[0-9]+|fast-[0-9]+\.[0-9]+|candidate-[0-9]+\.[0-9]+|[0-9]+\.[0-9]+(\.[0-9]+)?)$/)) {
         error "Invalid OpenShift version: '${params.openshiftVersion}'. Use specific version (4.16.20), channel (latest), or channel-version (stable-4.16)."
     }
 
-    // Region restriction due to OpenShift installer AMI availability and DNS zones
+    // WARNING: Region restriction due to OpenShift installer AMI availability and DNS zones
+    // TODO: Add support for additional regions once AMIs and DNS zones are configured
     if (params.awsRegion != 'us-east-2') {
         error "Unsupported AWS region: '${params.awsRegion}'. Currently only 'us-east-2' is supported."
     }
@@ -435,7 +501,7 @@ def generateInstallConfig(Map params) {
                     'team': params.teamName,
                     'product': params.productTag,
                     'owner': params.buildUser ?: env.BUILD_USER_ID ?: 'jenkins',
-                    'creation-time': (System.currentTimeMillis() / 1000).longValue().toString()  // Unix timestamp in seconds
+                    'creation-time': (System.currentTimeMillis() / 1000).longValue().toString()  // Convert milliseconds to seconds for Unix timestamp
                 ]
             ]
         ],
@@ -443,17 +509,23 @@ def generateInstallConfig(Map params) {
         sshKey: params.sshPublicKey
     ]
 
-    // Convert to YAML format as required by OpenShift installer
-    // We'll write the YAML directly in the calling method using writeYaml step
+    // Return as Map structure - will be converted to YAML by Jenkins writeYaml step
+    // This approach avoids manual YAML serialization issues
     return config
 }
 
 /**
  * Creates metadata JSON file with cluster information for tracking.
  *
+ * Generates comprehensive metadata including creation timestamp, user info,
+ * and cluster specifications for audit and lifecycle management.
+ *
  * @param params Map containing cluster configuration
  * @param clusterDir Directory where metadata will be saved
+ *
  * @return Map of metadata that was saved
+ *
+ * @since 1.0.0
  */
 def createMetadata(Map params, String clusterDir) {
     def metadata = [
@@ -476,12 +548,31 @@ def createMetadata(Map params, String clusterDir) {
 
 /**
  * Deploys Percona Monitoring and Management (PMM) to the OpenShift cluster.
- * Creates namespace, sets permissions, and deploys via Helm.
  *
- * @param params Map containing:
- *   - pmmVersion: Version to deploy
- *   - pmmNamespace: Namespace for PMM deployment (defaults to 'pmm-monitoring')
- * @return Map with PMM access details (url, username, password, namespace)
+ * Creates namespace, sets permissions, and deploys via Helm. Configures
+ * OpenShift-specific settings including anyuid SCC and route creation.
+ *
+ * @param params Map containing PMM deployment configuration:
+ *   - pmmVersion: Version to deploy (required)
+ *   - pmmNamespace: Namespace for PMM deployment (optional, default: 'pmm-monitoring')
+ *   - clusterName: Name of the cluster (for logging)
+ *
+ * @return Map with PMM access details:
+ *   - url: HTTPS URL for PMM web interface
+ *   - username: Admin username (default: 'admin')
+ *   - password: Admin password (default: 'admin')
+ *   - namespace: Kubernetes namespace where PMM is deployed
+ *
+ * @throws RuntimeException When Helm deployment fails or route creation errors
+ *
+ * @since 1.0.0
+ *
+ * @example
+ * def pmm = deployPMM([
+ *     pmmVersion: '3.3.0',
+ *     pmmNamespace: 'monitoring'
+ * ])
+ * println "PMM UI: ${pmm.url}"
  */
 def deployPMM(Map params) {
     openshiftTools.log('INFO', "Deploying PMM ${params.pmmVersion} to namespace ${params.pmmNamespace}...", params)
@@ -491,8 +582,8 @@ def deployPMM(Map params) {
         # Create namespace
         oc create namespace ${params.pmmNamespace} || true
 
-        # Grant anyuid SCC permissions
-        # PMM requires elevated privileges to run monitoring components
+        # Grant anyuid SCC permissions - required for PMM containers
+        # WARNING: PMM requires elevated privileges to run monitoring components
         oc adm policy add-scc-to-user anyuid -z default -n ${params.pmmNamespace}
         oc adm policy add-scc-to-user anyuid -z pmm -n ${params.pmmNamespace}
 
@@ -544,8 +635,19 @@ def deployPMM(Map params) {
 /**
  * Extracts cluster access information from OpenShift installation files.
  *
+ * Parses kubeconfig and retrieves console route to provide complete
+ * cluster access information for users and automation.
+ *
  * @param clusterDir Directory containing OpenShift installation files
- * @return Map with cluster access details (apiUrl, consoleUrl, kubeadminPassword, kubeconfig)
+ *
+ * @return Map with cluster access details:
+ *   - apiUrl: Kubernetes API server URL
+ *   - consoleUrl: OpenShift web console URL (if available)
+ *   - kubeadminPassword: Initial admin password
+ *   - kubeconfig: Path to kubeconfig file
+ *   - clusterDir: Local directory containing cluster files
+ *
+ * @since 1.0.0
  */
 def getClusterInfo(String clusterDir) {
     def info = [:]
@@ -581,10 +683,21 @@ def getClusterInfo(String clusterDir) {
 
 /**
  * Backward compatibility method - delegates to create().
- * Allows calling the library directly without method name.
  *
- * @param config Cluster configuration map
- * @return Result from create() method
+ * Allows calling the library directly without method name for backward
+ * compatibility with existing pipelines.
+ *
+ * @deprecated Use create() instead
+ * @param config Map containing cluster configuration
+ * @return Map containing cluster information
+ * @since 1.0.0
+ *
+ * @example
+ * // Old style (deprecated)
+ * openshiftCluster([clusterName: 'test'])
+ *
+ * // New style (preferred)
+ * openshiftCluster.create([clusterName: 'test'])
  */
 def call(Map config) {
     return create(config)
