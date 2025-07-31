@@ -159,8 +159,8 @@ def create(Map config) {
 
         return clusterInfo
     } catch (Exception e) {
-        openshiftTools.log('ERROR', "Failed to create OpenShift cluster: ${e.message}", params)
-        error "Failed to create OpenShift cluster: ${e.message}"
+        openshiftTools.log('ERROR', "Failed to create OpenShift cluster: ${e.toString()}", params)
+        error "Failed to create OpenShift cluster: ${e.toString()}"
     } finally {
         sh "rm -f ${params.workDir}/${params.clusterName}-state.tar.gz || true"
     }
@@ -258,7 +258,7 @@ def destroy(Map config) {
             s3Cleaned: true
         ]
     } catch (Exception e) {
-        error "Failed to destroy OpenShift cluster: ${e.message}"
+        error "Failed to destroy OpenShift cluster: ${e.toString()}"
     } finally {
         sh "rm -rf ${params.workDir}/${params.clusterName} || true"
     }
