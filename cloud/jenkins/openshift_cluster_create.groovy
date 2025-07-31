@@ -100,7 +100,9 @@ pipeline {
                             productTag: params.PRODUCT_TAG,
                             deployPMM: params.DEPLOY_PMM,
                             pmmVersion: params.PMM_VERSION,
-                            buildUser: env.BUILD_USER_ID ?: 'jenkins'
+                            buildUser: env.BUILD_USER_ID ?: 'jenkins',
+                            accessKey: AWS_ACCESS_KEY_ID,
+                            secretKey: AWS_SECRET_ACCESS_KEY
                         ]
 
                         // Create the cluster
@@ -230,7 +232,9 @@ pipeline {
                                     clusterName: env.FINAL_CLUSTER_NAME,
                                     awsRegion: params.AWS_REGION,
                                     s3Bucket: env.S3_BUCKET,
-                                    workDir: env.WORK_DIR
+                                    workDir: env.WORK_DIR,
+                                    accessKey: AWS_ACCESS_KEY_ID,
+                                    secretKey: AWS_SECRET_ACCESS_KEY
                                 ])
                             }
                         } catch (Exception e) {

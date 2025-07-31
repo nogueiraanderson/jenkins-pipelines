@@ -12,6 +12,8 @@ import groovy.json.JsonBuilder
  *   - sshPublicKey: SSH public key for cluster access (required)
  *   - s3Bucket: S3 bucket for storing cluster state (required)
  *   - workDir: Working directory for cluster files (required)
+ *   - accessKey: AWS access key (optional, falls back to env.AWS_ACCESS_KEY_ID)
+ *   - secretKey: AWS secret key (optional, falls back to env.AWS_SECRET_ACCESS_KEY)
  *   - baseDomain: Base domain for cluster URLs (optional, default: 'cd.percona.com')
  *   - masterType: EC2 instance type for masters (optional, default: 'm5.xlarge')
  *   - workerType: EC2 instance type for workers (optional, default: 'm5.large')
@@ -46,6 +48,14 @@ def create(Map config) {
         pmmNamespace: 'pmm-monitoring'
     ] + config
 
+    // Use provided credentials or fall back to environment variables
+    def awsAccessKey = params.accessKey ?: env.AWS_ACCESS_KEY_ID
+    def awsSecretKey = params.secretKey ?: env.AWS_SECRET_ACCESS_KEY
+
+    if (!awsAccessKey || !awsSecretKey) {
+        error "AWS credentials not provided and not found in environment"
+    }
+
     openshiftTools.log('INFO', "Creating OpenShift cluster: ${params.clusterName}", params)
 
     try {
@@ -55,7 +65,7 @@ def create(Map config) {
 
         // Step 2: Ensure S3 bucket exists
         openshiftTools.log('DEBUG', "Ensuring S3 bucket exists: ${params.s3Bucket} in ${params.awsRegion}", params)
-        openshiftS3.ensureS3BucketExists(params.s3Bucket, params.awsRegion, env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY)
+        openshiftS3.ensureS3BucketExists(params.s3Bucket, params.awsRegion, awsAccessKey, awsSecretKey)
 
         // Step 3: Install OpenShift tools
         openshiftTools.log('INFO', "Installing OpenShift tools for version: ${params.openshiftVersion}", params)
@@ -109,8 +119,8 @@ def create(Map config) {
                 region: params.awsRegion,
                 workDir: params.workDir,
                 metadata: metadata,
-                accessKey: env.AWS_ACCESS_KEY_ID,
-                secretKey: env.AWS_SECRET_ACCESS_KEY
+                accessKey: awsAccessKey,
+                secretKey: awsSecretKey
             ])
         }
 
@@ -150,8 +160,8 @@ def create(Map config) {
                 bucket: params.s3Bucket,
                 clusterName: params.clusterName,
                 region: params.awsRegion,
-                accessKey: env.AWS_ACCESS_KEY_ID,
-                secretKey: env.AWS_SECRET_ACCESS_KEY
+                accessKey: awsAccessKey,
+                secretKey: awsSecretKey
             ], metadata)
 
             clusterInfo.pmm = pmmInfo
@@ -174,6 +184,8 @@ def create(Map config) {
  *   - s3Bucket: S3 bucket containing cluster state (required)
  *   - awsRegion: AWS region where cluster exists (required)
  *   - workDir: Working directory (required)
+ *   - accessKey: AWS access key (optional, falls back to env.AWS_ACCESS_KEY_ID)
+ *   - secretKey: AWS secret key (optional, falls back to env.AWS_SECRET_ACCESS_KEY)
  *
  * @return Map with destruction status
  */
@@ -187,6 +199,14 @@ def destroy(Map config) {
 
     def params = config
 
+    // Use provided credentials or fall back to environment variables
+    def awsAccessKey = params.accessKey ?: env.AWS_ACCESS_KEY_ID
+    def awsSecretKey = params.secretKey ?: env.AWS_SECRET_ACCESS_KEY
+
+    if (!awsAccessKey || !awsSecretKey) {
+        error "AWS credentials not provided and not found in environment"
+    }
+
     openshiftTools.log('INFO', "Destroying OpenShift cluster: ${params.clusterName}")
 
     try {
@@ -195,8 +215,8 @@ def destroy(Map config) {
             bucket: params.s3Bucket,
             clusterName: params.clusterName,
             region: params.awsRegion,
-            accessKey: env.AWS_ACCESS_KEY_ID,
-            secretKey: env.AWS_SECRET_ACCESS_KEY
+            accessKey: awsAccessKey,
+            secretKey: awsSecretKey
         ])
 
         if (!metadata) {
@@ -212,8 +232,8 @@ def destroy(Map config) {
             clusterName: params.clusterName,
             region: params.awsRegion,
             workDir: params.workDir,
-            accessKey: env.AWS_ACCESS_KEY_ID,
-            secretKey: env.AWS_SECRET_ACCESS_KEY
+            accessKey: awsAccessKey,
+            secretKey: awsSecretKey
         ])
 
         if (!stateExists) {
@@ -246,8 +266,8 @@ def destroy(Map config) {
             bucket: params.s3Bucket,
             clusterName: params.clusterName,
             region: params.awsRegion,
-            accessKey: env.AWS_ACCESS_KEY_ID,
-            secretKey: env.AWS_SECRET_ACCESS_KEY
+            accessKey: awsAccessKey,
+            secretKey: awsSecretKey
         ])
 
         return [
@@ -268,6 +288,8 @@ def destroy(Map config) {
  * @param config Map containing:
  *   - region: AWS region to search (optional, default: 'us-east-2' or env.OPENSHIFT_AWS_REGION)
  *   - bucket: S3 bucket to search (optional, default: 'openshift-clusters-119175775298-us-east-2' or env.OPENSHIFT_S3_BUCKET)
+ *   - accessKey: AWS access key (optional, falls back to env.AWS_ACCESS_KEY_ID)
+ *   - secretKey: AWS secret key (optional, falls back to env.AWS_SECRET_ACCESS_KEY)
  *
  * @return List of cluster information maps
  */
@@ -277,17 +299,25 @@ def list(Map config = [:]) {
         bucket: env.OPENSHIFT_S3_BUCKET ?: 'openshift-clusters-119175775298-us-east-2'
     ] + config
 
+    // Use provided credentials or fall back to environment variables
+    def awsAccessKey = params.accessKey ?: env.AWS_ACCESS_KEY_ID
+    def awsSecretKey = params.secretKey ?: env.AWS_SECRET_ACCESS_KEY
+
+    if (!awsAccessKey || !awsSecretKey) {
+        error "AWS credentials not provided and not found in environment"
+    }
+
     try {
         def clusters = []
 
         // Get cluster names using the S3 library
         // This replaces the previous AWS CLI approach for better error handling
-        // Pass AWS credentials from environment (set by withCredentials)
+        // Pass AWS credentials
         def clusterNames = openshiftS3.listClusters([
             bucket: params.bucket,
             region: params.region,
-            accessKey: env.AWS_ACCESS_KEY_ID,
-            secretKey: env.AWS_SECRET_ACCESS_KEY
+            accessKey: awsAccessKey,
+            secretKey: awsSecretKey
         ])
 
         clusterNames.each { clusterName ->
@@ -295,8 +325,8 @@ def list(Map config = [:]) {
                 bucket: params.bucket,
                 clusterName: clusterName,
                 region: params.region,
-                accessKey: env.AWS_ACCESS_KEY_ID,
-                secretKey: env.AWS_SECRET_ACCESS_KEY
+                accessKey: awsAccessKey,
+                secretKey: awsSecretKey
             ])
 
             if (metadata) {

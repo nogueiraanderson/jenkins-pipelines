@@ -27,7 +27,9 @@ pipeline {
                     script {
                         def clusters = openshiftCluster.list([
                             region: env.OPENSHIFT_AWS_REGION,
-                            format: params.OUTPUT_FORMAT ?: 'table'
+                            format: params.OUTPUT_FORMAT ?: 'table',
+                            accessKey: AWS_ACCESS_KEY_ID,
+                            secretKey: AWS_SECRET_ACCESS_KEY
                         ])
 
                         if (clusters.isEmpty()) {
