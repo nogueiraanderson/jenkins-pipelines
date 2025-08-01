@@ -48,7 +48,7 @@ import groovy.json.JsonBuilder
  *   - deployPMM: Whether to deploy PMM after cluster creation (optional, default: true)
  *   - pmmVersion: PMM version to deploy (optional, default: '3.3.0')
  *   - pmmNamespace: Kubernetes namespace for PMM deployment (optional, default: 'pmm-monitoring')
- *   - pmmAdminPassword: PMM admin password (optional, default: auto-generated if empty)
+ *   - pmmAdminPassword: PMM admin password (optional, default: '<GENERATED>' for random password)
  *
  * @return Map containing cluster information:
  *   - apiUrl: Kubernetes API server URL
@@ -98,7 +98,7 @@ def create(Map config) {
         deployPMM: true,
         pmmVersion: '3.3.0',
         pmmNamespace: 'pmm-monitoring',
-        pmmAdminPassword: ''  // Empty string means generate random password
+        pmmAdminPassword: '<GENERATED>'  // Default to auto-generation
     ] + config
 
     // Use provided credentials or fall back to environment variables
@@ -574,7 +574,7 @@ def createMetadata(Map params, String clusterDir) {
  * @param params Map containing PMM deployment configuration:
  *   - pmmVersion: Version to deploy (required)
  *   - pmmNamespace: Namespace for PMM deployment (optional, default: 'pmm-monitoring')
- *   - pmmAdminPassword: Admin password for PMM (optional, auto-generated if empty)
+ *   - pmmAdminPassword: Admin password for PMM (optional, '<GENERATED>' for random password)
  *   - clusterName: Name of the cluster (for logging)
  *
  * @return Map with PMM access details:
@@ -628,10 +628,12 @@ def deployPMM(Map params) {
             --set platform=openshift \
             --set service.type=ClusterIP"""
 
-    // Only set password if provided, otherwise let Helm generate one
-    if (params.pmmAdminPassword) {
+    // Set password based on user input
+    // Only generate random password if value is '<GENERATED>' or empty
+    if (params.pmmAdminPassword && params.pmmAdminPassword != '<GENERATED>') {
         helmCommand += " \\\n            --set secret.pmm_password='${params.pmmAdminPassword}'"
     }
+    // If password is '<GENERATED>' or empty, Helm will auto-generate one
 
     helmCommand += " \\\n            --wait --timeout 10m"
 
@@ -670,7 +672,7 @@ def deployPMM(Map params) {
         username: 'admin',
         password: actualPassword,
         namespace: params.pmmNamespace,
-        passwordGenerated: !params.pmmAdminPassword  // Indicate if password was auto-generated
+        passwordGenerated: !params.pmmAdminPassword || params.pmmAdminPassword == '<GENERATED>'  // Indicate if password was auto-generated
     ]
 }
 
