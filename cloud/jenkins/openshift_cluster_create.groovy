@@ -1,6 +1,85 @@
 // groovylint-disable-next-line UnusedVariable, VariableName
 @Library('jenkins-pipelines') _
 
+// Shared function to handle cluster cleanup on failure/abort
+// Reduces code duplication between failure and aborted blocks
+def attemptClusterCleanup(String reason) {
+    if (env.FINAL_CLUSTER_NAME) {
+        if (params.DEBUG_MODE) {
+            echo "DEBUG MODE: Skipping automatic cleanup of ${reason} cluster"
+            echo 'To manually clean up resources later, run the openshift-cluster-destroy job with:'
+            echo "  - Cluster Name: ${env.FINAL_CLUSTER_NAME}"
+            echo "  - AWS Region: ${params.AWS_REGION}"
+            echo 'Resources will remain in AWS for debugging purposes'
+        } else {
+            echo "Attempting to clean up ${reason} cluster resources..."
+            // Aborted jobs have limited time before Jenkins kills the cleanup
+            if (reason == 'aborted') {
+                echo 'Note: Cleanup has 2 minute timeout on abort'
+            }
+
+            def cleanupTimeout = reason == 'aborted' ? 2 : 10
+            timeout(time: cleanupTimeout, unit: 'MINUTES') {
+                try {
+                    withCredentials([
+                        aws(
+                            credentialsId: 'jenkins-openshift-aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        )
+                    ]) {
+                        // For aborted jobs, only attempt cleanup if state files exist
+                        // This prevents unnecessary destroy attempts for very early aborts
+                        if (reason == 'aborted') {
+                            def clusterDir = "${env.WORK_DIR}/${env.FINAL_CLUSTER_NAME}"
+                            def hasMetadata = fileExists("${clusterDir}/metadata.json")
+                            def hasTerraformState = fileExists("${clusterDir}/terraform.tfstate")
+
+                            if (!hasMetadata && !hasTerraformState) {
+                                echo "No cluster state found - skipping cleanup"
+                                return
+                            }
+                            echo "Found cluster state files - attempting destroy"
+                        }
+
+                        openshiftCluster.destroy([
+                            clusterName: env.FINAL_CLUSTER_NAME,
+                            awsRegion: params.AWS_REGION,
+                            s3Bucket: env.S3_BUCKET,
+                            workDir: env.WORK_DIR,
+                            accessKey: AWS_ACCESS_KEY_ID,
+                            secretKey: AWS_SECRET_ACCESS_KEY,
+                            reason: "${reason}-cleanup",
+                            destroyedBy: env.BUILD_USER_ID ?: "jenkins-${reason}"
+                        ])
+                        echo "Cleanup completed successfully"
+                    }
+                } catch (Exception e) {
+                    echo "Cleanup failed: ${e.toString()}"
+                    if (reason == 'aborted') {
+                        echo "Manual cleanup may be required"
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Shared function to archive cluster logs and state files
+// Used by both failure and aborted blocks to capture debugging info
+def archiveClusterLogs() {
+    if (env.FINAL_CLUSTER_NAME) {
+        def clusterPath = "openshift-clusters/${env.FINAL_CLUSTER_NAME}"
+        archiveArtifacts artifacts: "${clusterPath}/**/*.log", allowEmptyArchive: true
+        archiveArtifacts artifacts: "${clusterPath}/**/log-bundle-*.tar.gz", allowEmptyArchive: true
+        archiveArtifacts artifacts: "${clusterPath}/terraform.tfstate", allowEmptyArchive: true
+        archiveArtifacts artifacts: "${clusterPath}/metadata.json", allowEmptyArchive: true
+        archiveArtifacts artifacts: "${clusterPath}/.openshift_install.log", allowEmptyArchive: true
+        archiveArtifacts artifacts: "${clusterPath}/install-config.yaml.backup", allowEmptyArchive: true
+        archiveArtifacts artifacts: "${clusterPath}/auth/**", allowEmptyArchive: true
+    }
+}
+
 pipeline {
     agent any
 
@@ -179,85 +258,6 @@ pipeline {
     post {
         always {
             script {
-                // Shared function to handle cluster cleanup on failure/abort
-                // Reduces code duplication between failure and aborted blocks
-                def attemptClusterCleanup = { String reason ->
-                    if (env.FINAL_CLUSTER_NAME) {
-                        if (params.DEBUG_MODE) {
-                            echo "DEBUG MODE: Skipping automatic cleanup of ${reason} cluster"
-                            echo 'To manually clean up resources later, run the openshift-cluster-destroy job with:'
-                            echo "  - Cluster Name: ${env.FINAL_CLUSTER_NAME}"
-                            echo "  - AWS Region: ${params.AWS_REGION}"
-                            echo 'Resources will remain in AWS for debugging purposes'
-                        } else {
-                            echo "Attempting to clean up ${reason} cluster resources..."
-                            // Aborted jobs have limited time before Jenkins kills the cleanup
-                            if (reason == 'aborted') {
-                                echo 'Note: Cleanup has 2 minute timeout on abort'
-                            }
-
-                            def cleanupTimeout = reason == 'aborted' ? 2 : 10
-                            timeout(time: cleanupTimeout, unit: 'MINUTES') {
-                                try {
-                                    withCredentials([
-                                        aws(
-                                            credentialsId: 'jenkins-openshift-aws',
-                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                        )
-                                    ]) {
-                                        // For aborted jobs, only attempt cleanup if state files exist
-                                        // This prevents unnecessary destroy attempts for very early aborts
-                                        if (reason == 'aborted') {
-                                            def clusterDir = "${env.WORK_DIR}/${env.FINAL_CLUSTER_NAME}"
-                                            def hasMetadata = fileExists("${clusterDir}/metadata.json")
-                                            def hasTerraformState = fileExists("${clusterDir}/terraform.tfstate")
-
-                                            if (!hasMetadata && !hasTerraformState) {
-                                                echo "No cluster state found - skipping cleanup"
-                                                return
-                                            }
-                                            echo "Found cluster state files - attempting destroy"
-                                        }
-
-                                        openshiftCluster.destroy([
-                                            clusterName: env.FINAL_CLUSTER_NAME,
-                                            awsRegion: params.AWS_REGION,
-                                            s3Bucket: env.S3_BUCKET,
-                                            workDir: env.WORK_DIR,
-                                            accessKey: AWS_ACCESS_KEY_ID,
-                                            secretKey: AWS_SECRET_ACCESS_KEY,
-                                            reason: "${reason}-cleanup",
-                                            destroyedBy: env.BUILD_USER_ID ?: "jenkins-${reason}"
-                                        ])
-                                        echo "Cleanup completed successfully"
-                                    }
-                                } catch (Exception e) {
-                                    echo "Cleanup failed: ${e.toString()}"
-                                    if (reason == 'aborted') {
-                                        echo "Manual cleanup may be required"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Shared function to archive cluster logs and state files
-                // Used by both failure and aborted blocks to capture debugging info
-                def archiveClusterLogs = {
-                    if (env.FINAL_CLUSTER_NAME) {
-                        def clusterPath = "openshift-clusters/${env.FINAL_CLUSTER_NAME}"
-                        archiveArtifacts artifacts: "${clusterPath}/**/*.log", allowEmptyArchive: true
-                        archiveArtifacts artifacts: "${clusterPath}/**/log-bundle-*.tar.gz", allowEmptyArchive: true
-                        archiveArtifacts artifacts: "${clusterPath}/terraform.tfstate", allowEmptyArchive: true
-                        archiveArtifacts artifacts: "${clusterPath}/metadata.json", allowEmptyArchive: true
-                        archiveArtifacts artifacts: "${clusterPath}/.openshift_install.log", allowEmptyArchive: true
-                        archiveArtifacts artifacts: "${clusterPath}/install-config.yaml.backup", allowEmptyArchive: true
-                        archiveArtifacts artifacts: "${clusterPath}/auth/**", allowEmptyArchive: true
-                    }
-                }
-
                 // Clean up workspace but keep cluster state
                 sh """
                     # Clean up temporary files
