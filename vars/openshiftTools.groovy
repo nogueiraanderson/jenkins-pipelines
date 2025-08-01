@@ -40,11 +40,14 @@ def log(String level, String message, Map params = [:]) {
 }
 
 /**
- * Installs OpenShift CLI tools (oc and openshift-install) and Helm.
+ * Installs OpenShift CLI tools (oc and openshift-install).
  *
  * Handles version resolution from channels to specific versions, downloads
  * binaries with checksum verification, and installs to user's local bin directory.
  * Falls back to alternative mirrors if primary download fails.
+ *
+ * Note: Helm is no longer automatically installed. Use openshiftTools.installHelm() 
+ * separately if needed, or it will be installed automatically when deploying PMM.
  *
  * @param config Map containing installation configuration:
  *   - openshiftVersion: Version to install (required, e.g., '4.16.20', 'latest', 'stable-4.16')
@@ -149,9 +152,6 @@ def install(Map config) {
             \$HOME/.local/bin/openshift-install version
             \$HOME/.local/bin/oc version --client
         """
-
-        // Install Helm package manager for Kubernetes applications
-        installHelm()
 
         return resolvedVersion
     } catch (Exception e) {
