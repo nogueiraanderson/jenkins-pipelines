@@ -192,7 +192,7 @@ pipeline {
                     } else {
                         status = currentBuild.result
                     }
-                    
+
                     echo """
                     ========================================
                     Destruction Attempt Summary

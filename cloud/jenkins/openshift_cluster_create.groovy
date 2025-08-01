@@ -195,7 +195,7 @@ pipeline {
                             if (reason == 'aborted') {
                                 echo 'Note: Cleanup has 2 minute timeout on abort'
                             }
-                            
+
                             def cleanupTimeout = reason == 'aborted' ? 2 : 10
                             timeout(time: cleanupTimeout, unit: 'MINUTES') {
                                 try {
@@ -212,14 +212,14 @@ pipeline {
                                             def clusterDir = "${env.WORK_DIR}/${env.FINAL_CLUSTER_NAME}"
                                             def hasMetadata = fileExists("${clusterDir}/metadata.json")
                                             def hasTerraformState = fileExists("${clusterDir}/terraform.tfstate")
-                                            
+
                                             if (!hasMetadata && !hasTerraformState) {
                                                 echo "No cluster state found - skipping cleanup"
                                                 return
                                             }
                                             echo "Found cluster state files - attempting destroy"
                                         }
-                                        
+
                                         openshiftCluster.destroy([
                                             clusterName: env.FINAL_CLUSTER_NAME,
                                             awsRegion: params.AWS_REGION,
@@ -242,7 +242,7 @@ pipeline {
                         }
                     }
                 }
-                
+
                 // Shared function to archive cluster logs and state files
                 // Used by both failure and aborted blocks to capture debugging info
                 def archiveClusterLogs = {
@@ -257,7 +257,7 @@ pipeline {
                         archiveArtifacts artifacts: "${clusterPath}/auth/**", allowEmptyArchive: true
                     }
                 }
-                
+
                 // Clean up workspace but keep cluster state
                 sh """
                     # Clean up temporary files
@@ -319,17 +319,17 @@ pipeline {
         aborted {
             script {
                 echo "Job was manually terminated - attempting to clean up cluster resources"
-                
+
                 if (env.FINAL_CLUSTER_NAME) {
                     echo "Detected partially created cluster: ${env.FINAL_CLUSTER_NAME}"
-                    
+
                     // Archive any logs that were created before abort
                     archiveClusterLogs()
-                    
+
                     // Attempt cleanup
                     attemptClusterCleanup('aborted')
                 }
-                
+
                 // Send notification if configured
                 if (env.SLACK_WEBHOOK) {
                     slackSend(
