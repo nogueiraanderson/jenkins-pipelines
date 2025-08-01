@@ -63,7 +63,7 @@
                     - "m6i.xlarge"
                     - "m6i.2xlarge"
                     - "c5.2xlarge"
-                description: "EC2 instance type for master nodes (x86_64)"
+                description: "EC2 instance type for feature/openshift-shared-libraries nodes (x86_64)"
 
           # === PMM Configuration ===
           - bool:
@@ -79,8 +79,8 @@
                 description: "PMM version to deploy (if enabled)"
           - string:
                 name: PMM_ADMIN_PASSWORD
-                default: "admin"
-                description: "Admin password for PMM web interface (if deployed)"
+                default: "<GENERATED>"
+                description: "Admin password for PMM web interface (if deployed, use '<GENERATED>' or leave empty for auto-generated password)"
                 trim: true
 
           # === Resource Tags & Lifecycle ===
