@@ -100,7 +100,7 @@ pipeline {
                             productTag: params.PRODUCT_TAG,
                             deployPMM: params.DEPLOY_PMM,
                             pmmVersion: params.PMM_VERSION,
-                            pmmAdminPassword: params.PMM_ADMIN_PASSWORD,
+                            pmmAdminPassword: params.PMM_ADMIN_PASSWORD ?: '',  // Empty string means generate random
                             buildUser: env.BUILD_USER_ID ?: 'jenkins',
                             accessKey: AWS_ACCESS_KEY_ID,
                             secretKey: AWS_SECRET_ACCESS_KEY
@@ -117,6 +117,8 @@ pipeline {
 
                         if (clusterInfo.pmm) {
                             env.PMM_URL = clusterInfo.pmm.url
+                            env.PMM_PASSWORD = clusterInfo.pmm.password
+                            env.PMM_PASSWORD_GENERATED = clusterInfo.pmm.passwordGenerated.toString()
                         }
 
                         // Archive credentials with correct path
@@ -137,7 +139,7 @@ pipeline {
             steps {
                 script {
                     // Display cluster information
-                    echo """
+                    def summaryMessage = """
                     ========================================
                     Cluster Creation Summary
                     ========================================
@@ -148,9 +150,21 @@ pipeline {
                     Console URL: ${env.CLUSTER_CONSOLE_URL}
                     S3 Backup: s3://${env.S3_BUCKET}/openshift-state/${env.FINAL_CLUSTER_NAME}/
                     Delete After: ${params.DELETE_AFTER_HOURS} hours
-                    ${env.PMM_URL ? "PMM URL: ${env.PMM_URL}" : ''}
+                    """
+
+                    if (env.PMM_URL) {
+                        summaryMessage += """
+                    PMM URL: ${env.PMM_URL}
+                    PMM Username: admin
+                    PMM Password: ${env.PMM_PASSWORD}${env.PMM_PASSWORD_GENERATED == 'true' ? ' (auto-generated)' : ''}
+                    """
+                    }
+
+                    summaryMessage += """
                     ========================================
                     """
+
+                    echo summaryMessage
 
                     // Set build description
                     currentBuild.description = "${env.FINAL_CLUSTER_NAME} - ${params.AWS_REGION}"

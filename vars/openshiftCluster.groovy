@@ -42,18 +42,26 @@ import groovy.json.JsonBuilder
  *   - workerType: EC2 instance type for workers (optional, default: 'm5.large')
  *   - workerCount: Number of worker nodes (optional, default: 3)
  *   - deleteAfterHours: Auto-delete tag value for cleanup automation (optional, default: '8')
+ *   - teamName: Team name for AWS tagging (optional, default: 'cloud')
+ *   - productTag: Product tag for AWS tagging (optional, default: 'openshift')
+ *   - buildUser: User who initiated the build (optional, default: env.BUILD_USER_ID or 'jenkins')
  *   - deployPMM: Whether to deploy PMM after cluster creation (optional, default: true)
  *   - pmmVersion: PMM version to deploy (optional, default: '3.3.0')
  *   - pmmNamespace: Kubernetes namespace for PMM deployment (optional, default: 'pmm-monitoring')
- *   - pmmAdminPassword: PMM admin password (optional, default: 'admin')
+ *   - pmmAdminPassword: PMM admin password (optional, default: auto-generated if empty)
  *
  * @return Map containing cluster information:
  *   - apiUrl: Kubernetes API server URL
- *   - consoleUrl: OpenShift web console URL
+ *   - consoleUrl: OpenShift web console URL (may be absent if route not ready)
  *   - kubeconfig: Path to kubeconfig file
- *   - kubeadminPassword: Initial admin password
+ *   - kubeadminPassword: Initial admin password for kubeadmin user
  *   - clusterDir: Local directory containing cluster files
- *   - pmm: PMM access details (if deployed)
+ *   - pmm: PMM access details (if deployed):
+ *     - url: HTTPS URL for PMM web interface
+ *     - username: Admin username (always 'admin')
+ *     - password: Admin password (generated or specified)
+ *     - namespace: Kubernetes namespace where PMM is deployed
+ *     - passwordGenerated: Boolean indicating if password was auto-generated
  *
  * @throws IllegalArgumentException When required parameters are missing or invalid
  * @throws RuntimeException When cluster creation fails or AWS resources cannot be provisioned
@@ -90,7 +98,7 @@ def create(Map config) {
         deployPMM: true,
         pmmVersion: '3.3.0',
         pmmNamespace: 'pmm-monitoring',
-        pmmAdminPassword: 'admin'
+        pmmAdminPassword: ''  // Empty string means generate random password
     ] + config
 
     // Use provided credentials or fall back to environment variables
@@ -237,11 +245,13 @@ def create(Map config) {
  *   - workDir: Working directory (required)
  *   - accessKey: AWS access key (optional, default: env.AWS_ACCESS_KEY_ID)
  *   - secretKey: AWS secret key (optional, default: env.AWS_SECRET_ACCESS_KEY)
+ *   - reason: Reason for destruction (optional, for logging)
+ *   - destroyedBy: User initiating destruction (optional, for logging)
  *
  * @return Map containing destruction status:
- *   - status: 'destroyed' or 'partial'
- *   - message: Detailed status message
- *   - remainingResources: List of resources that couldn't be deleted (if any)
+ *   - clusterName: Name of the destroyed cluster
+ *   - destroyed: Boolean indicating if destruction was successful
+ *   - s3Cleaned: Boolean indicating if S3 cleanup was successful
  *
  * @throws IllegalArgumentException When required parameters are missing
  * @throws RuntimeException When cluster state cannot be found or destruction fails
@@ -358,7 +368,14 @@ def destroy(Map config) {
  *   - accessKey: AWS access key (optional, falls back to env.AWS_ACCESS_KEY_ID)
  *   - secretKey: AWS secret key (optional, falls back to env.AWS_SECRET_ACCESS_KEY)
  *
- * @return List of cluster information maps
+ * @return List of cluster information maps, each containing:
+ *   - name: Cluster name
+ *   - version: OpenShift version
+ *   - region: AWS region
+ *   - created_by: User who created the cluster
+ *   - created_at: Creation timestamp
+ *   - pmm_deployed: 'Yes' or 'No' indicating PMM deployment status
+ *   - pmm_version: PMM version if deployed, 'N/A' otherwise
  */
 def list(Map config = [:]) {
     def params = [
@@ -557,14 +574,15 @@ def createMetadata(Map params, String clusterDir) {
  * @param params Map containing PMM deployment configuration:
  *   - pmmVersion: Version to deploy (required)
  *   - pmmNamespace: Namespace for PMM deployment (optional, default: 'pmm-monitoring')
- *   - pmmAdminPassword: Admin password for PMM (optional, default: 'admin')
+ *   - pmmAdminPassword: Admin password for PMM (optional, auto-generated if empty)
  *   - clusterName: Name of the cluster (for logging)
  *
  * @return Map with PMM access details:
  *   - url: HTTPS URL for PMM web interface
- *   - username: Admin username (default: 'admin')
- *   - password: Admin password (as configured)
+ *   - username: Admin username (always 'admin')
+ *   - password: Admin password (generated or as specified)
  *   - namespace: Kubernetes namespace where PMM is deployed
+ *   - passwordGenerated: Boolean indicating if password was auto-generated
  *
  * @throws RuntimeException When Helm deployment fails or route creation errors
  *
@@ -601,16 +619,23 @@ def deployPMM(Map params) {
         echo "Deploying PMM with Helm..."
     """
 
-    sh """
+    // Prepare helm command with optional password
+    def helmCommand = """
         export PATH="\$HOME/.local/bin:\$PATH"
         helm upgrade --install pmm percona/pmm \
             --namespace ${params.pmmNamespace} \
             --version ${params.pmmVersion.startsWith('3.') ? '1.4.6' : '1.3.12'} \
             --set platform=openshift \
-            --set service.type=ClusterIP \
-            --set pmmAdminPassword='${params.pmmAdminPassword ?: "admin"}' \
-            --wait --timeout 10m
-    """
+            --set service.type=ClusterIP"""
+
+    // Only set password if provided, otherwise let Helm generate one
+    if (params.pmmAdminPassword) {
+        helmCommand += " \\\n            --set secret.pmm_password='${params.pmmAdminPassword}'"
+    }
+
+    helmCommand += " \\\n            --wait --timeout 10m"
+
+    sh helmCommand
 
     sh """
         export PATH="\$HOME/.local/bin:\$PATH"
@@ -631,11 +656,21 @@ def deployPMM(Map params) {
         returnStdout: true
     ).trim()
 
+    // Get the actual password from the secret (either set or generated)
+    def actualPassword = sh(
+        script: """
+            export PATH="\$HOME/.local/bin:\$PATH"
+            oc get secret pmm-secret -n ${params.pmmNamespace} -o jsonpath='{.data.PMM_ADMIN_PASSWORD}' | base64 -d
+        """,
+        returnStdout: true
+    ).trim()
+
     return [
         url: "https://${pmmUrl}",
         username: 'admin',
-        password: params.pmmAdminPassword ?: 'admin',
-        namespace: params.pmmNamespace
+        password: actualPassword,
+        namespace: params.pmmNamespace,
+        passwordGenerated: !params.pmmAdminPassword  // Indicate if password was auto-generated
     ]
 }
 

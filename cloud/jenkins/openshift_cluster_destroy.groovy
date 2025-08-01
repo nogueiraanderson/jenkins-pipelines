@@ -103,7 +103,6 @@ pipeline {
                             awsRegion: params.AWS_REGION,
                             s3Bucket: env.S3_BUCKET,
                             workDir: env.WORK_DIR,
-                            cleanupRemaining: params.CLEANUP_REMAINING,
                             reason: params.DESTROY_REASON,
                             destroyedBy: env.BUILD_USER_ID ?: 'jenkins'
                         ]
@@ -111,20 +110,9 @@ pipeline {
                         // Destroy the cluster
                         def result = openshiftCluster.destroy(destroyConfig)
 
-                        // Check for remaining resources before converting to JSON
-                        def hasRemainingResources = false
-                        if (result && result.remainingResources && result.remainingResources.size() > 0) {
-                            hasRemainingResources = true
-                        }
-
                         // Store result as JSON
                         if (result) {
                             env.DESTROY_RESULT = groovy.json.JsonOutput.toJson(result)
-                        }
-
-                        if (hasRemainingResources) {
-                            echo 'WARNING: Some resources may still exist after destruction'
-                            unstable 'Cluster destroyed but some resources may remain'
                         }
                     }
                 }
@@ -148,9 +136,7 @@ pipeline {
                     Actions that would be performed:
                     1. Download cluster state from S3
                     2. Run 'openshift-install destroy cluster'
-                    3. Verify resource cleanup
-                    ${params.CLEANUP_REMAINING ? '4. Attempt to clean up any remaining resources' : ''}
-                    5. Delete cluster state from S3
+                    3. Delete cluster state from S3
 
                     Reason: ${params.DESTROY_REASON}
                     ========================================
