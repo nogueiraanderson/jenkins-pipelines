@@ -46,7 +46,7 @@ def log(String level, String message, Map params = [:]) {
  * binaries with checksum verification, and installs to user's local bin directory.
  * Falls back to alternative mirrors if primary download fails.
  *
- * Note: Helm is no longer automatically installed. Use openshiftTools.installHelm() 
+ * Note: Helm is no longer automatically installed. Use openshiftTools.installHelm()
  * separately if needed, or it will be installed automatically when deploying PMM.
  *
  * @param config Map containing installation configuration:

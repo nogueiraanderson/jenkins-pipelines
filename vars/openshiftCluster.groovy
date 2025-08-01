@@ -579,7 +579,7 @@ def createMetadata(Map params, String clusterDir) {
  */
 def deployPMM(Map params) {
     openshiftTools.log('INFO', "Deploying PMM ${params.pmmVersion} to namespace ${params.pmmNamespace}...", params)
-    
+
     // Install Helm if not already installed
     openshiftTools.installHelm()
 
