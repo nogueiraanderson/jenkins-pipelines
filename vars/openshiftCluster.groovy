@@ -45,6 +45,7 @@ import groovy.json.JsonBuilder
  *   - deployPMM: Whether to deploy PMM after cluster creation (optional, default: true)
  *   - pmmVersion: PMM version to deploy (optional, default: '3.3.0')
  *   - pmmNamespace: Kubernetes namespace for PMM deployment (optional, default: 'pmm-monitoring')
+ *   - pmmAdminPassword: PMM admin password (optional, default: 'admin')
  *
  * @return Map containing cluster information:
  *   - apiUrl: Kubernetes API server URL
@@ -88,7 +89,8 @@ def create(Map config) {
         productTag: 'openshift',
         deployPMM: true,
         pmmVersion: '3.3.0',
-        pmmNamespace: 'pmm-monitoring'
+        pmmNamespace: 'pmm-monitoring',
+        pmmAdminPassword: 'admin'
     ] + config
 
     // Use provided credentials or fall back to environment variables
@@ -197,7 +199,7 @@ def create(Map config) {
             metadata.pmmDeployed = true
             metadata.pmmVersion = params.pmmVersion
             metadata.pmmUrl = pmmInfo.url
-            metadata.pmm_namespace = pmmInfo.namespace
+            metadata.pmmNamespace = pmmInfo.namespace
 
             openshiftS3.saveMetadata([
                 bucket: params.s3Bucket,
@@ -322,7 +324,7 @@ def destroy(Map config) {
                     export KUBECONFIG=\$(pwd)/auth/kubeconfig
                     echo "Using kubeconfig: \$KUBECONFIG"
                 fi
-                openshift-install destroy cluster --log-level=info || true
+                openshift-install destroy cluster --log-level=info
             """
         }
 
@@ -555,12 +557,13 @@ def createMetadata(Map params, String clusterDir) {
  * @param params Map containing PMM deployment configuration:
  *   - pmmVersion: Version to deploy (required)
  *   - pmmNamespace: Namespace for PMM deployment (optional, default: 'pmm-monitoring')
+ *   - pmmAdminPassword: Admin password for PMM (optional, default: 'admin')
  *   - clusterName: Name of the cluster (for logging)
  *
  * @return Map with PMM access details:
  *   - url: HTTPS URL for PMM web interface
  *   - username: Admin username (default: 'admin')
- *   - password: Admin password (default: 'admin')
+ *   - password: Admin password (as configured)
  *   - namespace: Kubernetes namespace where PMM is deployed
  *
  * @throws RuntimeException When Helm deployment fails or route creation errors
@@ -605,16 +608,17 @@ def deployPMM(Map params) {
             --version ${params.pmmVersion.startsWith('3.') ? '1.4.6' : '1.3.12'} \
             --set platform=openshift \
             --set service.type=ClusterIP \
-            --set pmmAdminPassword='admin' \
+            --set pmmAdminPassword='${params.pmmAdminPassword ?: "admin"}' \
             --wait --timeout 10m
     """
 
     sh """
         export PATH="\$HOME/.local/bin:\$PATH"
         # Create OpenShift route for HTTPS access
+        # Fixed: Use correct service name and HTTP port for edge termination
         oc create route edge pmm-https \
-            --service=pmm \
-            --port=https \
+            --service=monitoring-service \
+            --port=http \
             --insecure-policy=Redirect \
             -n ${params.pmmNamespace} || true
     """
@@ -630,7 +634,7 @@ def deployPMM(Map params) {
     return [
         url: "https://${pmmUrl}",
         username: 'admin',
-        password: 'admin',
+        password: params.pmmAdminPassword ?: 'admin',
         namespace: params.pmmNamespace
     ]
 }
