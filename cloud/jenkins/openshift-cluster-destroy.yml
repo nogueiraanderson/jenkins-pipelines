@@ -37,10 +37,6 @@
             - 'error-cleanup'
             - 'other'
           description: 'Reason for cluster destruction'
-      - bool:
-          name: CLEANUP_REMAINING
-          default: true
-          description: 'Attempt to clean up any remaining resources after destruction'
 
     pipeline-scm:
       scm:
