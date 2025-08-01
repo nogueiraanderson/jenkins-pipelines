@@ -183,14 +183,28 @@ pipeline {
             script {
                 // Log destruction attempt
                 if (!params.DRY_RUN) {
+                    // Determine status based on currentBuild.result
+                    def status = 'UNKNOWN'
+                    if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
+                        status = 'SUCCESS (Cluster Destroyed)'
+                    } else if (currentBuild.result == 'FAILURE') {
+                        status = 'FAILED (Resources may remain)'
+                    } else {
+                        status = currentBuild.result
+                    }
+                    
                     echo """
-                    Destruction attempt summary:
-                    - Cluster: ${params.CLUSTER_NAME}
-                    - Region: ${params.AWS_REGION}
-                    - Reason: ${params.DESTROY_REASON}
-                    - User: ${env.BUILD_USER_ID ?: 'jenkins'}
-                    - Build: ${BUILD_NUMBER}
-                    - Time: ${new Date()}
+                    ========================================
+                    Destruction Attempt Summary
+                    ========================================
+                    Cluster: ${params.CLUSTER_NAME}
+                    Region: ${params.AWS_REGION}
+                    Status: ${status}
+                    Reason: ${params.DESTROY_REASON}
+                    User: ${env.BUILD_USER_ID ?: 'jenkins'}
+                    Build: ${BUILD_NUMBER}
+                    Time: ${new Date()}
+                    ========================================
                     """
                 }
             }
