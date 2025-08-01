@@ -30,8 +30,8 @@
       - choice:
           name: DESTROY_REASON
           choices:
-            - 'scheduled'
             - 'manual'
+            - 'scheduled'
             - 'cost-optimization'
             - 'testing-complete'
             - 'error-cleanup'
