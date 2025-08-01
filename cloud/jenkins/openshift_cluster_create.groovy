@@ -45,10 +45,10 @@ def attemptClusterCleanup(String reason) {
                             def hasTerraformState = fileExists("${clusterDir}/terraform.tfstate")
 
                             if (!hasMetadata && !hasTerraformState) {
-                                echo "No cluster state found - skipping cleanup"
+                                echo 'No cluster state found - skipping cleanup'
                                 return
                             }
-                            echo "Found cluster state files - attempting destroy"
+                            echo 'Found cluster state files - attempting destroy'
                         }
 
                         openshiftCluster.destroy([
@@ -61,12 +61,12 @@ def attemptClusterCleanup(String reason) {
                             reason: "${reason}-cleanup",
                             destroyedBy: env.BUILD_USER_ID ?: "jenkins-${reason}"
                         ])
-                        echo "Cleanup completed successfully"
+                        echo 'Cleanup completed successfully'
                     }
                 } catch (Exception e) {
                     echo "Cleanup failed: ${e.toString()}"
                     if (reason == 'aborted') {
-                        echo "Manual cleanup may be required"
+                        echo 'Manual cleanup may be required'
                     }
                 }
             }
@@ -264,9 +264,9 @@ pipeline {
                     """
                     }
 
-                    summaryMessage += """
+                    summaryMessage += '''
                     ========================================
-                    """
+                    '''
 
                     echo summaryMessage
 
@@ -305,7 +305,7 @@ pipeline {
                     ]
                     criticalFiles.each { file ->
                         if (fileExists(file)) {
-                            def relativePath = file.replaceFirst("${env.WORKSPACE}/", "")
+                            def relativePath = file.replaceFirst("${env.WORKSPACE}/", '')
                             archiveArtifacts artifacts: relativePath,
                                            fingerprint: true,
                                            allowEmptyArchive: false
@@ -343,7 +343,7 @@ pipeline {
         }
         aborted {
             script {
-                echo "Job was manually terminated - attempting to clean up cluster resources"
+                echo 'Job was manually terminated - attempting to clean up cluster resources'
 
                 if (env.FINAL_CLUSTER_NAME) {
                     echo "Detected partially created cluster: ${env.FINAL_CLUSTER_NAME}"

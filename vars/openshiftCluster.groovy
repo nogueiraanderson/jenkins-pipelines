@@ -106,7 +106,7 @@ def create(Map config) {
     def awsSecretKey = params.secretKey ?: env.AWS_SECRET_ACCESS_KEY
 
     if (!awsAccessKey || !awsSecretKey) {
-        error "AWS credentials not provided and not found in environment"
+        error 'AWS credentials not provided and not found in environment'
     }
 
     openshiftTools.log('INFO', "Creating OpenShift cluster: ${params.clusterName}", params)
@@ -281,7 +281,7 @@ def destroy(Map config) {
     def awsSecretKey = params.secretKey ?: env.AWS_SECRET_ACCESS_KEY
 
     if (!awsAccessKey || !awsSecretKey) {
-        error "AWS credentials not provided and not found in environment"
+        error 'AWS credentials not provided and not found in environment'
     }
 
     openshiftTools.log('INFO', "Destroying OpenShift cluster: ${params.clusterName}")
@@ -388,7 +388,7 @@ def list(Map config = [:]) {
     def awsSecretKey = params.secretKey ?: env.AWS_SECRET_ACCESS_KEY
 
     if (!awsAccessKey || !awsSecretKey) {
-        error "AWS credentials not provided and not found in environment"
+        error 'AWS credentials not provided and not found in environment'
     }
 
     try {
@@ -635,7 +635,7 @@ def deployPMM(Map params) {
     }
     // If password is '<GENERATED>' or empty, Helm will auto-generate one
 
-    helmCommand += " \\\n            --wait --timeout 10m"
+    helmCommand += ' \\\n            --wait --timeout 10m'
 
     sh helmCommand
 
