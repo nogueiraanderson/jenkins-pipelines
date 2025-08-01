@@ -1,8 +1,17 @@
 // groovylint-disable-next-line UnusedVariable, VariableName
 @Library('jenkins-pipelines') _
 
-// Shared function to handle cluster cleanup on failure/abort
-// Reduces code duplication between failure and aborted blocks
+/**
+ * Attempts to clean up OpenShift cluster resources when creation fails or is aborted.
+ *
+ * This method handles the destruction of partially created clusters to prevent
+ * orphaned AWS resources. It respects DEBUG_MODE to allow troubleshooting
+ * and implements different timeouts for different failure scenarios.
+ *
+ * @param reason The reason for cleanup: 'failed' or 'aborted'
+ *               - 'failed': Normal failure during cluster creation (10 min timeout)
+ *               - 'aborted': Manual job termination (2 min timeout due to Jenkins constraints)
+ */
 def attemptClusterCleanup(String reason) {
     if (env.FINAL_CLUSTER_NAME) {
         if (params.DEBUG_MODE) {
@@ -65,8 +74,24 @@ def attemptClusterCleanup(String reason) {
     }
 }
 
-// Shared function to archive cluster logs and state files
-// Used by both failure and aborted blocks to capture debugging info
+/**
+ * Archives cluster logs and state files for debugging purposes.
+ *
+ * This method collects all relevant files from a cluster creation attempt,
+ * including OpenShift installer logs, Terraform state, metadata, and
+ * authentication files. These artifacts are preserved in Jenkins for
+ * post-mortem analysis.
+ *
+ * Files archived:
+ * - OpenShift installer logs (*.log, .openshift_install.log)
+ * - Log bundles (log-bundle-*.tar.gz)
+ * - Terraform state files
+ * - Cluster metadata JSON
+ * - Install configuration backup
+ * - Authentication files (kubeconfig, passwords)
+ *
+ * @return void
+ */
 def archiveClusterLogs() {
     if (env.FINAL_CLUSTER_NAME) {
         def clusterPath = "openshift-clusters/${env.FINAL_CLUSTER_NAME}"
