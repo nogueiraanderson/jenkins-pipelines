@@ -96,6 +96,11 @@
                     - "3.2.0"
                     - "3.1.0"
                 description: "PMM version to deploy"
+          - string:
+                name: PMM_ADMIN_PASSWORD
+                default: "admin"
+                description: "Admin password for PMM (default: admin)"
+                trim: true
 
       pipeline-scm:
           scm:

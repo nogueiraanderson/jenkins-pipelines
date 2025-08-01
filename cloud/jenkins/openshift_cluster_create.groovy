@@ -100,6 +100,7 @@ pipeline {
                             productTag: params.PRODUCT_TAG,
                             deployPMM: params.DEPLOY_PMM,
                             pmmVersion: params.PMM_VERSION,
+                            pmmAdminPassword: params.PMM_ADMIN_PASSWORD,
                             buildUser: env.BUILD_USER_ID ?: 'jenkins',
                             accessKey: AWS_ACCESS_KEY_ID,
                             secretKey: AWS_SECRET_ACCESS_KEY
