@@ -631,7 +631,10 @@ def deployPMM(Map params) {
     // Set password based on user input
     // Only generate random password if value is '<GENERATED>' or empty
     if (params.pmmAdminPassword && params.pmmAdminPassword != '<GENERATED>') {
-        helmCommand += " \\\n            --set secret.pmm_password='${params.pmmAdminPassword}'"
+        // Escape single quotes in password for shell safety
+        // This prevents command injection and syntax errors
+        def escapedPassword = params.pmmAdminPassword.replaceAll("'", "'\"'\"'")
+        helmCommand += " \\\n            --set secret.pmm_password='${escapedPassword}'"
     }
     // If password is '<GENERATED>' or empty, Helm will auto-generate one
 
