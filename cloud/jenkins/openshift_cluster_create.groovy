@@ -205,7 +205,9 @@ pipeline {
                             teamName: params.TEAM_NAME,
                             productTag: params.PRODUCT_TAG,
                             deployPMM: params.DEPLOY_PMM,
-                            pmmVersion: params.PMM_VERSION,
+                            pmmImageTag: params.PMM_IMAGE_TAG,
+                            pmmHelmChartVersion: params.PMM_HELM_CHART_VERSION,
+                            pmmImageRepository: params.PMM_IMAGE_REPOSITORY,
                             pmmAdminPassword: params.PMM_ADMIN_PASSWORD ?: '<GENERATED>',  // Default to auto-generation
                             buildUser: env.BUILD_USER_ID ?: 'jenkins',
                             accessKey: AWS_ACCESS_KEY_ID,

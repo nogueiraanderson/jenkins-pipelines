@@ -70,13 +70,21 @@
                 name: DEPLOY_PMM
                 default: true
                 description: "Deploy Percona Monitoring and Management (PMM) after cluster creation"
-          - choice:
-                name: PMM_VERSION
-                choices:
-                    - "3.3.0"
-                    - "3.2.0"
-                    - "3.1.0"
-                description: "PMM version to deploy (if enabled)"
+          - string:
+                name: PMM_IMAGE_TAG
+                default: "3.3.1"
+                description: "Docker image tag for PMM server (e.g., 3.3.1, 3.3.1-rc, 3-dev-latest, 202508040905, PR-1234)"
+                trim: true
+          - string:
+                name: PMM_HELM_CHART_VERSION
+                default: "1.4.7"
+                description: "Helm chart version for PMM deployment (default: 1.4.7 for PMM 3.x)"
+                trim: true
+          - string:
+                name: PMM_IMAGE_REPOSITORY
+                default: "percona/pmm-server"
+                description: "Docker image repository (e.g., percona/pmm-server, perconalab/pmm-server)"
+                trim: true
           - string:
                 name: PMM_ADMIN_PASSWORD
                 default: "<GENERATED>"

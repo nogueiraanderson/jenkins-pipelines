@@ -46,7 +46,9 @@ import groovy.json.JsonBuilder
  *   - productTag: Product tag for AWS tagging (optional, default: 'openshift')
  *   - buildUser: User who initiated the build (optional, default: env.BUILD_USER_ID or 'jenkins')
  *   - deployPMM: Whether to deploy PMM after cluster creation (optional, default: true)
- *   - pmmVersion: PMM version to deploy (optional, default: '3.3.0')
+ *   - pmmImageTag: Docker image tag for PMM server (optional, default: '3.3.1')
+ *   - pmmHelmChartVersion: Helm chart version for PMM (optional, default: '1.4.7')
+ *   - pmmImageRepository: Docker image repository (optional, default: 'percona/pmm-server')
  *   - pmmNamespace: Kubernetes namespace for PMM deployment (optional, default: 'pmm-monitoring')
  *   - pmmAdminPassword: PMM admin password (optional, default: '<GENERATED>' for random password)
  *
@@ -96,7 +98,9 @@ def create(Map config) {
         teamName: 'cloud',
         productTag: 'openshift',
         deployPMM: true,
-        pmmVersion: '3.3.0',
+        pmmImageTag: '3.3.1',
+        pmmHelmChartVersion: '1.4.7',
+        pmmImageRepository: 'percona/pmm-server',
         pmmNamespace: 'pmm-monitoring',
         pmmAdminPassword: '<GENERATED>'  // Default to auto-generation
     ] + config
@@ -205,7 +209,7 @@ def create(Map config) {
             def pmmInfo = deployPMM(params)
 
             metadata.pmmDeployed = true
-            metadata.pmmVersion = params.pmmVersion
+            metadata.pmmImageTag = params.pmmImageTag
             metadata.pmmUrl = pmmInfo.url
             metadata.pmmNamespace = pmmInfo.namespace
 
@@ -572,7 +576,9 @@ def createMetadata(Map params, String clusterDir) {
  * OpenShift-specific settings including anyuid SCC and route creation.
  *
  * @param params Map containing PMM deployment configuration:
- *   - pmmVersion: Version to deploy (required)
+ *   - pmmImageTag: Docker image tag to deploy (required)
+ *   - pmmHelmChartVersion: Helm chart version (required)
+ *   - pmmImageRepository: Docker image repository (required)
  *   - pmmNamespace: Namespace for PMM deployment (optional, default: 'pmm-monitoring')
  *   - pmmAdminPassword: Admin password for PMM (optional, '<GENERATED>' for random password)
  *   - clusterName: Name of the cluster (for logging)
@@ -590,13 +596,15 @@ def createMetadata(Map params, String clusterDir) {
  *
  * @example
  * def pmm = deployPMM([
- *     pmmVersion: '3.3.0',
+ *     pmmImageTag: '3.3.1',
+ *     pmmHelmChartVersion: '1.4.7',
+ *     pmmImageRepository: 'percona/pmm-server',
  *     pmmNamespace: 'monitoring'
  * ])
  * println "PMM UI: ${pmm.url}"
  */
 def deployPMM(Map params) {
-    openshiftTools.log('INFO', "Deploying PMM ${params.pmmVersion} to namespace ${params.pmmNamespace}...", params)
+    openshiftTools.log('INFO', "Deploying PMM from ${params.pmmImageRepository}:${params.pmmImageTag} to namespace ${params.pmmNamespace}...", params)
 
     // Install Helm if not already installed
     openshiftTools.installHelm()
@@ -624,9 +632,11 @@ def deployPMM(Map params) {
         export PATH="\$HOME/.local/bin:\$PATH"
         helm upgrade --install pmm percona/pmm \
             --namespace ${params.pmmNamespace} \
-            --version ${params.pmmVersion.startsWith('3.') ? '1.4.6' : '1.3.12'} \
+            --version ${params.pmmHelmChartVersion} \
             --set platform=openshift \
-            --set service.type=ClusterIP"""
+            --set service.type=ClusterIP \
+            --set image.repository=${params.pmmImageRepository} \
+            --set image.tag=${params.pmmImageTag}"""
 
     // Set password based on user input
     // Only generate random password if value is '<GENERATED>' or empty
