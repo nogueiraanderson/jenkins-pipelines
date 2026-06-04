@@ -1,0 +1,142 @@
+# PG-2353 Oracle Linux AMI factory - local build management.
+#
+# Runs the SAME packer template + scripts the GitHub Actions workflow uses, so an
+# AMI built locally is identical to a CI-built one. Recipes are parameterized by
+# os_major / arch / env, so the pattern lifts beyond PG: copy this dir, retag the
+# role/source in oracle-linux.pkr.hcl (or thread a product var), and point a new
+# consumer at the tags.
+#
+# AWS auth: `export AWS_PROFILE=percona-dev-admin` first. Packer's AWS SDK does
+# not always resolve SSO profiles, so the build/bake recipes export concrete
+# short-lived creds into the env before invoking packer.
+#
+# env=prod  -> real tags the pg.cd consumer selects (role=ppg-package-test, source=factory)
+# env=test  -> isolated tags (role=ppg-test-*, source=factory-test, factory_env=test),
+#              NEVER consumed by production; use for local/CI testing, then `just prune-test`.
+
+region  := "eu-central-1"
+profile  := env_var_or_default("AWS_PROFILE", "percona-dev-admin")
+
+# list recipes
+default:
+    @just --list
+
+# install/upgrade the amazon plugin
+init:
+    packer init .
+
+# format the HCL (main + smoke templates)
+fmt:
+    packer fmt .
+    packer fmt smoke
+
+# validate one combo  (maj=8|9  arch=x86_64|arm64)
+validate maj="9" arch="x86_64":
+    packer validate -var os_major={{maj}} -var arch={{arch}} .
+
+# validate every OL8/9 x arch combo + the smoke template
+validate-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    packer init . >/dev/null
+    for m in 8 9; do for a in x86_64 arm64; do
+      echo "validate OL$m $a"; packer validate -var os_major=$m -var arch=$a .
+    done; done
+    ( cd smoke && packer init . >/dev/null && packer validate -var candidate_ami=ami-00000000000000000 -var os_major=9 -var arch=x86_64 . )
+
+# fmt-check + validate everything + actionlint the GHA workflow (CI gate, no AWS)
+check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    packer fmt -check -diff . && packer fmt -check -diff smoke
+    just validate-all
+    command -v actionlint >/dev/null && actionlint ../../.github/workflows/ppg-oracle-ami-factory.yml || echo "actionlint not installed; skipping workflow lint"
+    echo "check OK"
+
+# build one combo  (env=prod real tags | test isolated tags)  -- candidate only, no promote
+build maj="9" arch="x86_64" env="prod":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(aws configure export-credentials --profile {{profile}} --format env)"; unset AWS_PROFILE
+    rm -f manifest.json
+    AWS_REGION={{region}} packer build -color=false \
+      -var os_major={{maj}} -var arch={{arch}} -var env={{env}} -var region={{region}} .
+
+# smoke-test + promote an already-built AMI (native packer skip_create_ami build)
+smoke ami maj arch promote_role="ppg-package-test":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(aws configure export-credentials --profile {{profile}} --format env)"; unset AWS_PROFILE
+    cd smoke && packer init . >/dev/null
+    packer build -color=false -var candidate_ami={{ami}} -var os_major={{maj}} -var arch={{arch}} \
+      -var region={{region}} -var promote_role={{promote_role}} . \
+      || { echo "smoke failed; deregistering {{ami}}"; aws ec2 deregister-image --region {{region}} --image-id {{ami}}; exit 1; }
+
+# full one-combo factory run: build (env) -> native smoke boot-test -> promote
+bake maj="9" arch="x86_64" env="prod":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(aws configure export-credentials --profile {{profile}} --format env)"; unset AWS_PROFILE
+    rm -f manifest.json
+    AWS_REGION={{region}} packer build -color=false \
+      -var os_major={{maj}} -var arch={{arch}} -var env={{env}} -var region={{region}} .
+    AMI=$(python3 -c "import json;print(json.load(open('manifest.json'))['builds'][-1]['artifact_id'].split(':')[-1])")
+    pr=ppg-package-test; [ "{{env}}" = "test" ] && pr=ppg-test-package-test
+    echo "smoke + promote $AMI -> $pr"
+    ( cd smoke && packer init . >/dev/null && packer build -color=false \
+        -var candidate_ami=$AMI -var os_major={{maj}} -var arch={{arch}} -var region={{region}} -var promote_role=$pr . ) \
+      || { echo "smoke failed; deregistering $AMI"; aws ec2 deregister-image --region {{region}} --image-id $AMI; exit 1; }
+
+# isolated TEST bake of one combo (env=test) - never consumed by pg.cd
+test maj="9" arch="x86_64":
+    @just bake {{maj}} {{arch}} test
+
+# build + promote ALL OL8/9 x arch  (env=prod by default; pass test for isolated)
+all env="prod":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for m in 8 9; do for a in x86_64 arm64; do just bake $m $a {{env}}; done; done
+
+# list factory AMIs for an env (prod|test) with role + creation date
+list env="prod":
+    aws ec2 describe-images --profile {{profile}} --region {{region}} --owners self \
+      --filters Name=tag:factory_env,Values={{env}} \
+      --query 'reverse(sort_by(Images,&CreationDate))[].{Name:Name,AMI:ImageId,role:Tags[?Key==`role`]|[0].Value,arch:Architecture,created:CreationDate}' \
+      --output table
+
+# resolve the newest promoted AMI for a combo (exactly what moleculeEnvPPG does)
+latest maj="9" arch="x86_64" role="ppg-package-test":
+    aws ec2 describe-images --profile {{profile}} --region {{region}} --owners self \
+      --filters Name=tag:role,Values={{role}} Name=tag:os,Values=oraclelinux \
+                Name=tag:os_major,Values={{maj}} Name=tag:arch,Values={{arch}} Name=state,Values=available \
+      --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text
+
+# deregister all TEST AMIs + their snapshots (cleanup after testing)
+prune-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    amis=$(aws ec2 describe-images --profile {{profile}} --region {{region}} --owners self \
+      --filters Name=tag:factory_env,Values=test --query 'Images[].ImageId' --output text)
+    [ -z "$amis" ] && { echo "no test AMIs"; exit 0; }
+    for ami in $amis; do
+      snaps=$(aws ec2 describe-images --profile {{profile}} --region {{region}} --image-ids "$ami" \
+        --query 'Images[0].BlockDeviceMappings[].Ebs.SnapshotId' --output text)
+      echo "deregister $ami (snaps: $snaps)"
+      aws ec2 deregister-image --profile {{profile}} --region {{region}} --image-id "$ami" || true
+      for s in $snaps; do aws ec2 delete-snapshot --profile {{profile}} --region {{region}} --snapshot-id "$s" || true; done
+    done
+
+# create the SSM builder instance profile locally (one-time, for local builds).
+# PRODUCTION is terraform-managed: percona-cd-platform terraform/iam-gha-ppg-ami-factory.tf.
+iam-setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    aws iam create-role --profile {{profile}} --role-name ppg-ami-builder-ssm \
+      --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
+      --tags Key=temp-ppg-ami-test,Value=true Key=ticket,Value=PG-2353 2>/dev/null || echo "role exists"
+    aws iam attach-role-policy --profile {{profile}} --role-name ppg-ami-builder-ssm \
+      --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+    aws iam create-instance-profile --profile {{profile}} --instance-profile-name ppg-ami-builder-ssm \
+      --tags Key=temp-ppg-ami-test,Value=true Key=ticket,Value=PG-2353 2>/dev/null || echo "profile exists"
+    aws iam add-role-to-instance-profile --profile {{profile}} --instance-profile-name ppg-ami-builder-ssm \
+      --role-name ppg-ami-builder-ssm 2>/dev/null || echo "role already in profile"

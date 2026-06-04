@@ -1,0 +1,118 @@
+# PG-2353 / PS-11252 - Oracle Linux package-test AMI factory.
+# Bakes OL8/OL9 (and later OL10) x86_64+arm64 AMIs with Packer over AWS Session
+# Manager (no inbound SSH), authenticated via GitHub OIDC (no static keys), and
+# promotes each via a fresh-boot smoke test. Consumer: pg.cd molecule jobs select
+# the newest role=ppg-package-test AMI by tag (vars/moleculeEnvPPG.groovy).
+#
+# Triggers: recipe change (paths), weekly security rebake (cron), manual.
+# NOTE: pin actions to SHAs before the production PR (Percona-Lab convention).
+
+name: ppg-oracle-ami-factory
+
+on:
+  workflow_dispatch:
+    inputs:
+      combos:
+        description: 'JSON matrix include list, e.g. [{"os_major":"9","arch":"x86_64"}]'
+        required: false
+        default: '[{"os_major":"9","arch":"x86_64"}]'
+      env:
+        description: 'prod (real factory tags) or test (isolated tags, never consumed by pg.cd)'
+        required: false
+        default: 'prod'
+        type: choice
+        options: [prod, test]
+  push:
+    branches: [master]
+    paths:
+      - 'ppg/packer/**'
+      - '.github/workflows/ppg-oracle-ami-factory.yml'
+  schedule:
+    - cron: '0 6 * * 1' # weekly Mon 06:00 UTC - absorb Oracle security errata
+
+permissions:
+  contents: read # workflow-level default: read-only
+
+concurrency:
+  group: ppg-ami-factory-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+  FACTORY_ENV: ${{ github.event.inputs.env || 'prod' }}
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write # ONLY this job mints the OIDC token
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(github.event.inputs.combos || '[{"os_major":"8","arch":"x86_64"},{"os_major":"8","arch":"arm64"},{"os_major":"9","arch":"x86_64"},{"os_major":"9","arch":"arm64"}]') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ secrets.PPG_AMI_FACTORY_ROLE_ARN }}
+          role-session-name: ppg-ami-factory-${{ github.run_id }}-${{ github.run_attempt }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install Session Manager plugin
+        run: |
+          set -euo pipefail
+          if ! command -v session-manager-plugin >/dev/null; then
+            curl -fsSL "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o /tmp/smp.deb
+            sudo dpkg -i /tmp/smp.deb
+          fi
+          session-manager-plugin --version
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@v3
+        with:
+          version: '>= 1.12.0'
+
+      - name: Packer init
+        working-directory: ppg/packer
+        run: packer init .
+
+      - name: Packer build (OL${{ matrix.os_major }} ${{ matrix.arch }}, env=${{ env.FACTORY_ENV }})
+        working-directory: ppg/packer
+        run: |
+          rm -f manifest.json
+          packer build -color=false \
+            -var "os_major=${{ matrix.os_major }}" \
+            -var "arch=${{ matrix.arch }}" \
+            -var "region=${AWS_REGION}" \
+            -var "env=${FACTORY_ENV}" .
+
+      - name: Smoke-test + promote (native packer skip_create_ami build)
+        working-directory: ppg/packer
+        run: |
+          set -euo pipefail
+          AMI=$(python3 -c "import json;print(json.load(open('manifest.json'))['builds'][-1]['artifact_id'].split(':')[-1])")
+          echo "built candidate: $AMI"
+          pr=ppg-package-test; [ "$FACTORY_ENV" = "test" ] && pr=ppg-test-package-test
+          cd smoke && packer init .
+          packer build -color=false \
+            -var "candidate_ami=$AMI" -var "os_major=${{ matrix.os_major }}" \
+            -var "arch=${{ matrix.arch }}" -var "region=${AWS_REGION}" -var "promote_role=$pr" . \
+          || { echo "smoke failed; deregistering $AMI"; aws ec2 deregister-image --region "$AWS_REGION" --image-id "$AMI"; exit 1; }
+
+  notify:
+    needs: bake
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Slack on failure
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.RELEASES_CI_SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
+          payload: |
+            text: "PPG-OL-AMI factory FAILED - ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
