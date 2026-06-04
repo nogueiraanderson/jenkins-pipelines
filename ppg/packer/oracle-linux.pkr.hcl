@@ -114,7 +114,10 @@ source "amazon-ebs" "ol" {
   ssh_timeout               = "12m"
   ssh_clear_authorized_keys = true # native: strip packer's temp key from the image
   iam_instance_profile      = var.builder_instance_profile
-  user_data                 = local.ssm_bootstrap
+  # The least-privilege OIDC role can PassRole this profile but intentionally
+  # lacks iam:GetInstanceProfile; skip Packer's pre-launch existence check.
+  skip_profile_validation = true
+  user_data               = local.ssm_bootstrap
 
   # Native retention: the baked AMI auto-deprecates ~5 weeks out, so superseded
   # weekly images age out without a custom deregister-old sweep.

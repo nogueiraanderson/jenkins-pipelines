@@ -56,6 +56,7 @@ source "amazon-ebs" "smoke" {
   ssh_interface               = "session_manager"
   ssh_timeout                 = "10m"
   iam_instance_profile        = var.builder_instance_profile
+  skip_profile_validation     = true # OIDC role has PassRole only, not iam:GetInstanceProfile
   subnet_id                   = var.subnet_id
   associate_public_ip_address = true
   run_tags = {
