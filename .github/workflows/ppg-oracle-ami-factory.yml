@@ -75,7 +75,10 @@ jobs:
       - name: Setup Packer
         uses: hashicorp/setup-packer@v3
         with:
-          version: '>= 1.12.0'
+          # Exact version, never a constraint: setup-packer uses this string verbatim
+          # as the tool-cache path segment, so a space/'>' in a constraint like
+          # ">= 1.12.0" breaks the post-install `packer version` check. Bump deliberately.
+          version: '1.15.4'
 
       - name: Packer init
         working-directory: ppg/packer
@@ -110,9 +113,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Slack on failure
+        # Skip cleanly when the webhook secret is unset (e.g. fork tests), so a real
+        # bake failure is not masked by a second "missing webhook" failure.
+        if: env.SLACK_WEBHOOK != ''
+        env:
+          SLACK_WEBHOOK: ${{ secrets.RELEASES_CI_SLACK_WEBHOOK }}
         uses: slackapi/slack-github-action@v2
         with:
-          webhook: ${{ secrets.RELEASES_CI_SLACK_WEBHOOK }}
+          webhook: ${{ env.SLACK_WEBHOOK }}
           webhook-type: incoming-webhook
           payload: |
             text: "PPG-OL-AMI factory FAILED - ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
