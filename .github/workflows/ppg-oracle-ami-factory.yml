@@ -22,11 +22,13 @@ on:
         default: 'prod'
         type: choice
         options: [prod, test]
-  push:
-    branches: [master]
-    paths:
-      - 'ppg/packer/**'
-      - '.github/workflows/ppg-oracle-ami-factory.yml'
+  # NOTE: push trigger temporarily disabled on the FORK so template pushes don't
+  # auto-fire prod bakes during testing. Restored (uncommented) in the canonical PR.
+  # push:
+  #   branches: [master]
+  #   paths:
+  #     - 'ppg/packer/**'
+  #     - '.github/workflows/ppg-oracle-ami-factory.yml'
   schedule:
     - cron: '0 6 * * 1' # weekly Mon 06:00 UTC - absorb Oracle security errata
 
@@ -105,7 +107,7 @@ jobs:
           packer build -color=false \
             -var "candidate_ami=$AMI" -var "os_major=${{ matrix.os_major }}" \
             -var "arch=${{ matrix.arch }}" -var "region=${AWS_REGION}" -var "promote_role=$pr" . \
-          || { echo "smoke failed; deregistering $AMI"; aws ec2 deregister-image --region "$AWS_REGION" --image-id "$AMI"; exit 1; }
+          || { echo "smoke failed; deregistering $AMI + its snapshots"; aws ec2 deregister-image --delete-associated-snapshots --region "$AWS_REGION" --image-id "$AMI"; exit 1; }
 
   notify:
     needs: bake

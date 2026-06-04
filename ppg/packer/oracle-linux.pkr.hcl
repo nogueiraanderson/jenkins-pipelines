@@ -65,6 +65,12 @@ variable "builder_instance_profile" {
   description = "IAM instance profile (AmazonSSMManagedInstanceCore) for the builder, so Packer connects over Session Manager (no inbound SSH)."
 }
 
+variable "builder_security_group_name" {
+  type        = string
+  default     = "ppg-ami-factory-builder"
+  description = "Name of the pre-created (terraform-managed) egress-only SG; supplying it disables Packer's temporary SG so the OIDC role needs no SG-create perms."
+}
+
 variable "env" {
   type        = string
   default     = "prod"
@@ -147,6 +153,15 @@ source "amazon-ebs" "ol" {
   subnet_id                   = var.subnet_id
   associate_public_ip_address = true
 
+  # Pre-created no-ingress SG (terraform-managed, egress-only). Supplying a SG
+  # disables Packer's temporary SG, so the OIDC role drops all SG-create perms.
+  # session_manager needs no inbound rule; egress reaches SSM + dnf over 443.
+  security_group_filter {
+    filters = {
+      "group-name" = var.builder_security_group_name
+    }
+  }
+
   launch_block_device_mappings {
     device_name           = "/dev/sda1"
     volume_size           = var.volume_size
@@ -167,23 +182,25 @@ source "amazon-ebs" "ol" {
   # passing image to role=ppg-package-test (what the source filter + consumer
   # select). A non-booting image therefore never becomes selectable.
   tags = {
-    Name        = local.ami_name
-    os          = "oraclelinux"
-    os_major    = var.os_major
-    arch        = var.arch
-    role        = local.candidate_role
-    source      = local.src_tag
-    factory_env = var.env
-    factory_run = local.ts
-    ticket      = "PG-2353"
-    base_ami    = "{{ .SourceAMI }}"
-    base_name   = "{{ .SourceAMIName }}"
+    Name            = local.ami_name
+    os              = "oraclelinux"
+    os_major        = var.os_major
+    arch            = var.arch
+    role            = local.candidate_role
+    source          = local.src_tag
+    factory_env     = var.env
+    factory_run     = local.ts
+    ticket          = "PG-2353"
+    iit-billing-tag = "ppg-ami-factory" # lets the ResourceTag-scoped DeregisterImage match
+    base_ami        = "{{ .SourceAMI }}"
+    base_name       = "{{ .SourceAMIName }}"
   }
   snapshot_tags = {
-    Name        = local.ami_name
-    role        = local.candidate_role
-    source      = local.src_tag
-    factory_env = var.env
+    Name            = local.ami_name
+    role            = local.candidate_role
+    source          = local.src_tag
+    factory_env     = var.env
+    iit-billing-tag = "ppg-ami-factory" # lets the ResourceTag-scoped DeleteSnapshot match
   }
 }
 

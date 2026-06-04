@@ -38,6 +38,10 @@ variable "promote_role" {
   type    = string
   default = "ppg-package-test"
 }
+variable "builder_security_group_name" {
+  type    = string
+  default = "ppg-ami-factory-builder"
+}
 
 locals {
   instance_type = var.arch == "arm64" ? "t4g.large" : "t3.large"
@@ -59,6 +63,12 @@ source "amazon-ebs" "smoke" {
   skip_profile_validation     = true # OIDC role has PassRole only, not iam:GetInstanceProfile
   subnet_id                   = var.subnet_id
   associate_public_ip_address = true
+  # Same pre-created no-ingress SG as the builder (disables Packer's temp SG).
+  security_group_filter {
+    filters = {
+      "group-name" = var.builder_security_group_name
+    }
+  }
   run_tags = {
     Name            = "ppg-smoke"
     iit-billing-tag = "ppg-ami-factory"
