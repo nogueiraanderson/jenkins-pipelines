@@ -15,6 +15,16 @@ for tool in mkfs.xfs mkswap partprobe xfs_freeze blkid findmnt; do
   command -v "$tool" >/dev/null || { echo "MISSING required tool: $tool" >&2; exit 1; }
 done
 
+# fail-safe: thaw /boot if still frozen and unmount the target deepest-first on ANY exit, so a
+# mid-surgery failure leaves the builder clean for the driver's volume detach (see docs/reimage.md).
+cleanup_surgery() {
+  xfs_freeze -u /boot 2>/dev/null || true
+  for m in $(mount | awk '{print $3}' | grep '^/mnt/target' | sort -r); do
+    umount "$m" 2>/dev/null || umount -l "$m" 2>/dev/null || true
+  done
+}
+trap cleanup_surgery EXIT
+
 # --- introspect the source (the running root) ---
 SRC_ROOT_DEV=$(findmnt -no SOURCE /)
 SRC_ROOT_UUID=$(blkid -s UUID -o value "$SRC_ROOT_DEV")
@@ -94,6 +104,16 @@ case "${root_spec:-}" in
   ""|"UUID=$SRC_ROOT_UUID") : ;;
   *) echo "FATAL: target fstab pins / to '$root_spec' (expected UUID=$SRC_ROOT_UUID or none); refusing to produce an image that may fail to mount /" >&2; exit 1 ;;
 esac
+
+# fail-closed: /boot, /boot/efi, and swap must also resolve on the fresh-GPT plain target. The
+# surgery clones their filesystem UUIDs (dd /boot, mkswap -U, mkfs.fat -i), so a UUID= or LABEL=
+# pin survives but a PARTUUID (new GPT) or bare-device pin would not. Absence is fine.
+while read -r spec where; do
+  case "$spec" in
+    UUID=*|LABEL=*) ;;
+    *) echo "FATAL: target fstab pins $where by '$spec' (won't resolve on the fresh-GPT plain target; expected UUID= or LABEL=)" >&2; exit 1 ;;
+  esac
+done < <(awk '$1 !~ /^#/ && ($2=="/boot"||$2=="/boot/efi"||$3=="swap"){print $1, ($3=="swap"?"swap":$2)}' /mnt/target/etc/fstab)
 
 # --- bootloader: arm64 uses the verbatim ESP; x86_64 reinstalls grub2 with os-prober off ---
 if [[ "$ARCH" = x86_64 ]]; then
