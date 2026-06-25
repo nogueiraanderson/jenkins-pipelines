@@ -77,10 +77,10 @@ the same UUID is still mounted on the builder.
 ### LVM source -> plain-partition root (x86_64)
 
 The x86_64 base is LVM-rooted. A second VG of the same name cannot coexist on the
-builder, so root is converted to a plain partition. Only the GRUB cmdline is
-rewritten (`root=/dev/mapper/...`, `rd.lvm.lv=...` -> `root=UUID=...`); fstab is
-already by UUID. `os-prober` is disabled so `grub2-mkconfig` does not graft the
-builder's own root.
+builder, so root is converted to a plain partition. The GRUB cmdline and the
+future-kernel seed `/etc/kernel/cmdline` are rewritten (`root=/dev/mapper/...`,
+`rd.lvm.lv=...` -> `root=UUID=...`); fstab is already by UUID. `os-prober` is
+disabled so `grub2-mkconfig` does not graft the builder's own root.
 
 ### Device naming
 
@@ -94,7 +94,8 @@ Every gate refuses to produce a possibly-unbootable or wrongly-sized image:
 
 - **/boot size guard** (`surgery`): never `dd` a source `/boot` larger than the target partition (silent truncation -> unbootable).
 - **fstab-root invariant** (`surgery`): the target `/etc/fstab` root must be `UUID=<cloned>` or absent (root via cmdline). A `/dev/mapper` or bare-device pin would not resolve on the plain-partition target.
-- **surviving-LVM grep** (`surgery`, x86_64): abort if any `vg_main` / `rd.lvm.lv` / `root=/dev/(mapper|dm-)` reference survives in the boot config.
+- **surviving-LVM grep** (`surgery`, x86_64): abort if any `vg_main` / `rd.lvm.lv` / `root=/dev/(mapper|dm-)` reference survives in any cmdline source, including the future-kernel seeds `/etc/kernel/cmdline` and `grubenv` (a clean immediate boot can still regress on the next kernel install otherwise).
+- **root=UUID positive gate** (`surgery`, x86_64): abort unless the effective cmdline pins root by the cloned filesystem UUID.
 - **size gate** (`verify`): never promote a base whose root snapshot exceeds `var.volume_size`, or the refresh could not launch it.
 - **cross-env gate** (`verify`): never promote a candidate whose `factory_env` tag does not match the requested env (a test candidate can never reach the prod role by an omitted/wrong arg).
 - **two-size boot + smoke** (`verify`): boot at `var.volume_size` and 30 GiB, assert `growpart` grew root, then a fresh-boot smoke (install) before promotion.
