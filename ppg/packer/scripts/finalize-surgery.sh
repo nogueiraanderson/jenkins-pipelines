@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# On-builder root re-image: reproduce the running root's partition scheme on $TGT at a smaller size.
-# Runs as root over SSH (piped by reimage-ol10.sh); the builder boots FROM the base being shrunk, so
-# the live root IS the source. Rationale for every step (dd /boot, UUID cloning, LVM->plain, the
-# gates) is in docs/reimage.md.
+# Finalize + shrink provisioner for the OL10 ebssurrogate finalize build (bootstrap/finalize-ol10.pkr.hcl).
+# Runs as root over SSM on a builder booted FROM the raw Oracle OL10 import. It (1) finalizes the live
+# root (ec2-user default + amazon-ssm-agent + dnf update), then (2) reproduces that finalized root onto
+# the blank ROOT_GIB surrogate volume Packer attached, so Packer registers a var.volume_size AMI from it.
+# Rationale for every surgery step (dd /boot nrext64, UUID cloning, LVM->plain, the gates) is in docs/finalize.md.
 set -euo pipefail
 
 ARCH="${ARCH:?set ARCH}"
-TGT="${TGT:?set TGT (target disk, e.g. /dev/nvme1n1)}"
+ROOT_GIB="${ROOT_GIB:?set ROOT_GIB (surrogate size; = var.volume_size)}"
 
 command -v parted >/dev/null || dnf -y install parted
 command -v rsync  >/dev/null || dnf -y install rsync
@@ -15,8 +16,33 @@ for tool in mkfs.xfs mkswap partprobe xfs_freeze blkid findmnt; do
   command -v "$tool" >/dev/null || { echo "MISSING required tool: $tool" >&2; exit 1; }
 done
 
+# === 1. finalize the live root (this content becomes the AMI after the rsync in step 3) ===
+# default_user -> ec2-user (99- sorts AFTER Oracle's cloud.cfg.d/90_ol.cfg, which sets opc and would win).
+cat >/etc/cloud/cloud.cfg.d/99-ec2-user.cfg <<'CFG'
+system_info:
+  default_user: {name: ec2-user, gecos: "EC2 Default User", sudo: ["ALL=(ALL) NOPASSWD:ALL"], groups: [adm, systemd-journal, wheel], shell: /bin/bash}
+CFG
+systemctl enable amazon-ssm-agent   # installed at launch by the template user_data; enable for the baked image
+dnf -y update                       # latest errata (the raw base ships a few behind)
+
+# === 2. locate the surrogate: Packer attached a blank ROOT_GIB volume. The builder root is the larger
+#        raw base, so the surrogate is the blank disk of exactly ROOT_GIB (no VolumeId to match under Packer). ===
+want=$((ROOT_GIB * 1024 * 1024 * 1024))
+TGT=""
+for _ in $(seq 1 30); do
+  while read -r name size type; do
+    [[ "$type" = disk && "$size" = "$want" ]] || continue
+    [[ $(lsblk -rno NAME "/dev/$name" | wc -l) -eq 1 ]] || continue   # blank (no partitions)
+    TGT="/dev/$name"; break
+  done < <(lsblk -bdno NAME,SIZE,TYPE)
+  [[ -n "$TGT" ]] && break
+  sleep 3
+done
+[[ -n "$TGT" ]] || { echo "FATAL: no blank ${ROOT_GIB}GiB surrogate disk found" >&2; exit 1; }
+echo "surrogate target: $TGT"
+
 # fail-safe: thaw /boot if still frozen and unmount the target deepest-first on ANY exit, so a
-# mid-surgery failure leaves the builder clean for the driver's volume detach (see docs/reimage.md).
+# mid-surgery failure leaves the builder clean for Packer's volume detach (see docs/finalize.md).
 cleanup_surgery() {
   xfs_freeze -u /boot 2>/dev/null || true
   for m in $(mount | awk '{print $3}' | grep '^/mnt/target' | sort -r); do
@@ -25,6 +51,7 @@ cleanup_surgery() {
 }
 trap cleanup_surgery EXIT
 
+# === 3. surgery: reproduce the finalized live root onto $TGT at ROOT_GIB ===
 # --- introspect the source (the running root) ---
 SRC_ROOT_DEV=$(findmnt -no SOURCE /)
 SRC_ROOT_UUID=$(blkid -s UUID -o value "$SRC_ROOT_DEV")
@@ -38,7 +65,7 @@ if [[ "$ARCH" = arm64 ]]; then
 fi
 echo "source: root=$SRC_ROOT_DEV ($SRC_ROOT_UUID) boot=$SRC_BOOT_DEV swap=${SRC_SWAP_UUID:-none} lvm=$IS_LVM"
 
-# --- partition the target (layout + rationale in docs/reimage.md; root is the last, growable part) ---
+# --- partition the target (layout + rationale in docs/finalize.md; root is the last, growable part) ---
 # partition-name prefix: nvme needs a 'p' (nvme1n1p2), sd* does not (sdf2).
 case "$TGT" in *[0-9]) PART="${TGT}p" ;; *) PART="$TGT" ;; esac
 wipefs -a "$TGT" || true
@@ -88,7 +115,7 @@ if [[ "$IS_LVM" = 1 ]]; then
   done
   sed -i 's#rd\.lvm\.lv=[^ ]*##g' /mnt/target/etc/default/grub
   # /etc/kernel/cmdline seeds FUTURE BLS entries (kernel-install / grubby); rewrite it too or
-  # the next kernel update reintroduces the LVM root on the plain image. See docs/reimage.md.
+  # the next kernel update reintroduces the LVM root on the plain image. See docs/finalize.md.
   if [[ -f /mnt/target/etc/kernel/cmdline ]]; then
     sed -i -e "s#root=${SRC_ROOT_DEV}#root=UUID=${SRC_ROOT_UUID}#g" \
            -e "s#root=/dev/dm-[0-9]*#root=UUID=${SRC_ROOT_UUID}#g" \
@@ -96,7 +123,7 @@ if [[ "$IS_LVM" = 1 ]]; then
   fi
 fi
 
-# --- fail-closed: target fstab root must be UUID=<cloned> or absent (see docs/reimage.md). A
+# --- fail-closed: target fstab root must be UUID=<cloned> or absent (see docs/finalize.md). A
 #     /dev/mapper or bare-device pin would not resolve on the plain-partition target. ---
 [[ -f /mnt/target/etc/fstab ]] || { echo "FATAL: /mnt/target/etc/fstab missing after rsync" >&2; exit 1; }
 root_spec=$(awk '$1 !~ /^#/ && $2 == "/" {print $1; exit}' /mnt/target/etc/fstab || true)
@@ -148,4 +175,4 @@ touch /mnt/target/.autorelabel
 # --- unmount deepest-first (a --bind /run pulls in autofs/credential submounts) ---
 sync
 for m in $(mount | awk '{print $3}' | grep '^/mnt/target' | sort -r); do umount "$m" 2>/dev/null || umount -l "$m"; done
-echo "REIMAGE_SURGERY_OK root_uuid=$SRC_ROOT_UUID lvm_converted=$IS_LVM"
+echo "FINALIZE_SURGERY_OK root_uuid=$SRC_ROOT_UUID lvm_converted=$IS_LVM target=$TGT"

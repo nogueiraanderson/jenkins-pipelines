@@ -51,9 +51,8 @@ SRC="$(basename "$SRC_URL")"; VMDK="ol10-${ARCH}.vmdk"
 FORCE="${FORCE:-0}"   # FORCE=1 rebuilds the AMI lineage (raw -> candidate) from the EXISTING
                       # S3 source + snapshot; it never re-downloads the image. To refresh the
                       # Oracle source, delete s3://$BUCKET/$VMDK (and bump bNNN) first. The
-                      # result is Oracle's full-size base (x86_64 is LVM); shrink it with
-                      # reimage-ol10 before promotion. The refresh launches the newest promoted
-                      # base on var.volume_size and a base larger than that cannot launch.
+                      # finalize build (ebssurrogate) shrinks the result to var.volume_size as it
+                      # bakes, so the candidate is already the size the refresh launches.
 
 # Idempotency helpers: newest self-owned, available OL10 image for THIS arch.
 # Return an ImageId or empty string. A describe FAILURE (throttle, expired creds) is
@@ -81,12 +80,11 @@ RAW=""; BASE=""
 # 0. Strongest guard: a promoted prod base already exists -> nothing to do. This protects a
 #    small-disk host from a re-run that would otherwise attempt the image download below.
 PROMOTED=$(img_by_tag "$ROLE_PROMOTED") || exit 1
-PREBASE=$(img_by_tag "${ROLE_PREBASE:-ppg-ol10-prebase}") || exit 1
-if { [ -n "$PROMOTED" ] || [ -n "$PREBASE" ]; } && [ "$FORCE" != 1 ]; then
+if [ -n "$PROMOTED" ] && [ "$FORCE" != 1 ]; then
   cat <<EOF
 
-OL10 $ARCH base already built (${PROMOTED:+promoted $PROMOTED}${PREBASE:+ prebase $PREBASE}). Nothing to do.
-The reimage + refresh paths take over from here.
+OL10 $ARCH base already built + promoted: $PROMOTED (role=$ROLE_PROMOTED). Nothing to do.
+The refresh path (oracle-linux.pkr.hcl, os_major already includes 10) takes over from here.
 Re-run with FORCE=1 to rebuild the AMIs from the existing S3 source (no re-download).
 EOF
   exit 0
@@ -149,7 +147,8 @@ else
     echo "  raw base=$RAW"
   fi
 
-  # 3. Packer finalize (ec2-user + amazon-ssm-agent + dnf update; Packer owns the AMI/snapshot tags).
+  # 3. Packer finalize (ebssurrogate: ec2-user + amazon-ssm-agent + dnf update, then shrink to
+  #    var.volume_size; Packer owns the AMI/snapshot tags and the surrogate snapshot/register).
   log_step "Packer finalize (role=ppg-ol10-candidate until promotion)"
   ( cd "$HERE/bootstrap" && packer init . >/dev/null && \
     packer build -color=false -var raw_ami="$RAW" -var arch="$ARCH" -var region="$REGION" . )
@@ -161,6 +160,5 @@ cat <<EOF
 BOOTSTRAP-OL10 ($ARCH) COMPLETE.
   raw base (intermediate): ${RAW:-<reused candidate; no new raw>}
   candidate base:          ${BASE:-<see packer output above>}  (role=$ROLE_CANDIDATE, Packer-tagged)
-NEXT: just bootstrap-ol10-verify ${BASE:-<candidate-ami>} $ARCH   # boot-validate + promote to the prebase role
-Then: just reimage-ol10 $ARCH                                     # shrink to var.volume_size + promote to the consumed role
+NEXT: just bootstrap-ol10-verify ${BASE:-<candidate-ami>} $ARCH   # two-size boot + smoke + promote to the consumed role
 EOF

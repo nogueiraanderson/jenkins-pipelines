@@ -1,13 +1,17 @@
-# OL10 bootstrap FINALIZE - turns the import-registered raw OL10 base
-# (Oracle official cloud image: default user opc, no ssm-agent) into the
-# consumable lineage-root base. The import + register of the raw base is AWS CLI
-# (Packer cannot import-snapshot); THIS Packer build owns the finalize + the
-# AMI/snapshot TAGS, so the bootstrap is tag-managed by Packer like the refresh.
+# OL10 bootstrap FINALIZE (amazon-ebssurrogate) - turns the import-registered raw OL10 base
+# (Oracle official cloud image: default user opc, no ssm-agent, full-size root) DIRECTLY into the
+# consumable var.volume_size lineage-root base. The builder boots FROM the raw base, Packer attaches a
+# blank var.volume_size surrogate volume, and finalize-surgery.sh finalizes the live root (ec2-user +
+# amazon-ssm-agent + dnf update) then reproduces it onto the surrogate at the smaller size; Packer
+# snapshots the surrogate and registers the AMI from it. ebssurrogate is what lets the AMI root be
+# smaller than the source snapshot (EBS cannot restore below a snapshot, XFS cannot shrink in place),
+# so no separate re-image step or prebase role is needed. The import + register of the raw base is AWS
+# CLI (Packer cannot import-snapshot); THIS build owns the AMI/snapshot TAGS, so the bootstrap stays
+# tag-managed by Packer like the refresh. Internals: docs/finalize.md.
 #
-# Connects over Session Manager as the raw image's default user (opc) - user_data
-# installs amazon-ssm-agent at launch (the raw image lacks it), same mechanism as
-# the refresh template. The provisioner adds ec2-user + dnf update; the produced
-# AMI is tagged role=ppg-ol10-candidate (promote via `just bootstrap-ol10-verify`).
+# Connects over Session Manager as the raw image's default user (opc); user_data installs
+# amazon-ssm-agent at launch (the raw image lacks it). The produced AMI is tagged
+# role=ppg-ol10-candidate; `just bootstrap-ol10-verify` boot-validates + promotes it.
 #
 #   packer init . && packer build -var raw_ami=ami-... -var arch=arm64 .   # or x86_64
 
@@ -50,10 +54,15 @@ variable "env" {
   type    = string
   default = "prod"
 }
+variable "volume_size" {
+  type    = number
+  default = 20 # surrogate (AMI) root GiB; MUST equal the refresh template's var.volume_size (drift-guarded in `just check`)
+}
 
 locals {
   instance_type  = var.arch == "arm64" ? "t4g.large" : "t3.large"
   ssm_arch       = var.arch == "arm64" ? "arm64" : "amd64"
+  boot_mode      = var.arch == "arm64" ? "uefi" : "legacy-bios"
   ts             = formatdate("YYYYMMDD-hhmmss", timestamp())
   candidate_role = var.env == "test" ? "ppg-test-candidate" : "ppg-ol10-candidate"
   src_tag        = var.env == "test" ? "factory-test" : "factory-bootstrap"
@@ -66,11 +75,15 @@ locals {
   EOT
 }
 
-source "amazon-ebs" "finalize" {
+source "amazon-ebssurrogate" "finalize" {
   region                      = var.region
   instance_type               = local.instance_type
   source_ami                  = var.raw_ami
   ami_name                    = local.name
+  ami_architecture            = var.arch
+  ami_virtualization_type     = "hvm"
+  boot_mode                   = local.boot_mode
+  ena_support                 = true
   communicator                = "ssh"
   ssh_username                = var.ssh_username
   ssh_interface               = "session_manager"
@@ -87,6 +100,25 @@ source "amazon-ebs" "finalize" {
     filters = {
       "group-name" = var.builder_security_group_name
     }
+  }
+
+  # Blank surrogate volume: finalize-surgery.sh partitions + populates it at var.volume_size, then
+  # Packer snapshots IT (not the builder's larger raw root) and registers the AMI from that snapshot.
+  launch_block_device_mappings {
+    device_name           = "/dev/sdf"
+    volume_size           = var.volume_size
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+
+  # The AMI's root device IS the surrogate. volume_size == the launch surrogate size; the surgery
+  # partitions root to 100%, so the consumer's growpart fills a larger launch (e.g. 30 GiB) as before.
+  ami_root_device {
+    source_device_name    = "/dev/sdf"
+    device_name           = "/dev/sda1"
+    volume_size           = var.volume_size
+    volume_type           = "gp3"
+    delete_on_termination = true
   }
 
   run_tags = {
@@ -122,10 +154,14 @@ source "amazon-ebs" "finalize" {
 
 build {
   name    = "ppg-ol10-finalize"
-  sources = ["source.amazon-ebs.finalize"]
+  sources = ["source.amazon-ebssurrogate.finalize"]
 
   provisioner "shell" {
-    script          = "${path.root}/../scripts/finalize-ol10.sh"
+    script = "${path.root}/../scripts/finalize-surgery.sh"
+    environment_vars = [
+      "ARCH=${var.arch}",
+      "ROOT_GIB=${var.volume_size}",
+    ]
     execute_command = "sudo env {{ .Vars }} bash '{{ .Path }}'"
   }
 
