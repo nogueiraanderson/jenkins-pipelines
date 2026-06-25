@@ -140,7 +140,7 @@ check:
     just validate-all
     command -v actionlint >/dev/null && actionlint ../../.github/workflows/ppg-oracle-ami-factory.yml || echo "actionlint not installed; skipping workflow lint"
     # drift guard: the reimage recipes' {{root_gib}} must equal the refresh template's var.volume_size.
-    vs=$(grep -A2 'variable "volume_size"' oracle-linux.pkr.hcl | grep -oE 'default += *[0-9]+' | grep -oE '[0-9]+$')
+    vs=$(awk '/variable "volume_size"/{f=1} f&&/default/{gsub(/[^0-9]/,"");print;exit}' oracle-linux.pkr.hcl)
     [ "$vs" = "{{root_gib}}" ] || { echo "DRIFT: justfile root_gib={{root_gib}} != oracle-linux.pkr.hcl var.volume_size=$vs"; exit 1; }
     echo "check OK"
 
