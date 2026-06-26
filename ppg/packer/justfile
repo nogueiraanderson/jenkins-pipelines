@@ -113,10 +113,12 @@ _prune-by-filter apply +filters:
 init:
     packer init .
 
-# format the HCL (main + smoke templates)
+# format the HCL (main + smoke + reimage + bootstrap templates)
 fmt:
     packer fmt .
     packer fmt smoke
+    packer fmt reimage
+    packer fmt bootstrap
 
 # validate one combo  (maj=8|9|10  arch=x86_64|arm64)
 validate maj="9" arch="x86_64":
@@ -131,17 +133,21 @@ validate-all:
       echo "validate OL$m $a"; packer validate -var os_major=$m -var arch=$a .
     done; done
     ( cd smoke && packer init . >/dev/null && packer validate -var candidate_ami=ami-00000000000000000 -var os_major=9 -var arch=x86_64 . )
+    ( cd reimage && packer init . >/dev/null && packer validate -var arch=x86_64 . )
+    ( cd bootstrap && packer init . >/dev/null && packer validate -var raw_ami=ami-00000000000000000 -var arch=x86_64 . )
 
 # fmt-check + validate everything + actionlint the GHA workflow (CI gate, no AWS)
 check:
     #!/usr/bin/env bash
     set -euo pipefail
-    packer fmt -check -diff . && packer fmt -check -diff smoke
+    packer fmt -check -diff . && packer fmt -check -diff smoke && packer fmt -check -diff reimage && packer fmt -check -diff bootstrap
     just validate-all
     command -v actionlint >/dev/null && actionlint ../../.github/workflows/ppg-oracle-ami-factory.yml || echo "actionlint not installed; skipping workflow lint"
-    # drift guard: the reimage recipes' {{root_gib}} must equal the refresh template's var.volume_size.
+    # drift guard: {{root_gib}} must equal var.volume_size in BOTH the refresh + reimage templates
+    # (reimage-surgery partitions root to {{root_gib}}; a mismatch sizes the AMI wrong for the refresh).
     vs=$(awk '/variable "volume_size"/{f=1} f&&/default/{gsub(/[^0-9]/,"");print;exit}' oracle-linux.pkr.hcl)
-    [ "$vs" = "{{root_gib}}" ] || { echo "DRIFT: justfile root_gib={{root_gib}} != oracle-linux.pkr.hcl var.volume_size=$vs"; exit 1; }
+    rvs=$(awk '/variable "volume_size"/{f=1} f&&/default/{gsub(/[^0-9]/,"");print;exit}' reimage/reimage-ol10.pkr.hcl)
+    { [ "$vs" = "{{root_gib}}" ] && [ "$rvs" = "{{root_gib}}" ]; } || { echo "DRIFT: root_gib={{root_gib}} != refresh=$vs / reimage=$rvs"; exit 1; }
     echo "check OK"
 
 # trigger the GHA factory workflow for the full matrix (drive CI from just). Targets the
@@ -404,23 +410,25 @@ bootstrap-ol10-verify ami arch="arm64":
     echo "OL10 {{arch}} base {{ami}} verified + promoted (role={{role_prebase}}); NEXT: just reimage-ol10 {{arch}}"
 
 # ---------------------------------------------------------------------------
-# OL10 re-image (one-time lineage shrink): copy the current OL10 base onto a smaller
-# {{root_gib}} GiB root. AWS cannot restore a volume below its source snapshot and XFS cannot
+# OL10 re-image (one-time lineage shrink, amazon-ebssurrogate): shrink the booted prebase onto a
+# {{root_gib}} GiB surrogate. AWS cannot restore a volume below its source snapshot and XFS cannot
 # shrink in place, so the refresh template alone cannot; the refresh then sustains the smaller size.
+# Packer owns the launch/attach/snapshot/register/cleanup lifecycle (reimage/reimage-ol10.pkr.hcl);
+# the prebase already booted (bootstrap-ol10-verify), so its /boot is complete and no dnf runs here.
 # Flow:  just reimage-ol10 <arch> [env]  ->  just reimage-ol10-verify <ami> <arch> [env]
 # ---------------------------------------------------------------------------
 
-# shrink the current OL10 base root to {{root_gib}} GiB (registers a candidate; does not promote).
-[doc("one-time per arch: shrink the OL10 base root to {{root_gib}} GiB (env=test isolates the candidate)")]
+# shrink the prebase root to {{root_gib}} GiB via ebssurrogate (registers a candidate; does not promote).
+[doc("one-time per arch: shrink the prebase root to {{root_gib}} GiB via ebssurrogate (env=test isolates the candidate)")]
 reimage-ol10 arch="arm64" env="prod":
     #!/usr/bin/env bash
     set -euo pipefail
     eval "$(aws configure export-credentials --profile {{profile}} --format env)"; unset AWS_PROFILE
-    ARCH={{arch}} REGION={{region}} ROOT_GIB={{root_gib}} ENV={{env}} \
-      BILLING_TAG={{billing_tag}} OS_NAME={{os_name}} ROLE_PROMOTED={{role_prod}} ROLE_PREBASE={{role_prebase}} \
-      SUBNET={{subnet}} BUILDER_PROFILE={{builder_profile}} \
-      BOOTTEST_KEY=ol10-import/{{boottest_key}}.pem BOOTTEST_SG={{boottest_sg}} \
-      bash scripts/reimage-ol10.sh
+    rm -f reimage/manifest.json
+    ( cd reimage && packer init . >/dev/null && AWS_REGION={{region}} packer build -color=false \
+        -var arch={{arch}} -var env={{env}} -var region={{region}} . )
+    ami=$(python3 -c "import json;print(json.load(open('reimage/manifest.json'))['builds'][-1]['artifact_id'].split(':')[-1])")
+    echo "REIMAGED: $ami (role=ppg-reimage-candidate); NEXT: just reimage-ol10-verify $ami {{arch}} {{env}}"
 
 # boot-validate a re-imaged candidate on TWO root sizes ({{root_gib}} + 30) + smoke, then promote.
 # Fail-closed SIZE GATE: never promote a base whose root snapshot exceeds {{root_gib}}
