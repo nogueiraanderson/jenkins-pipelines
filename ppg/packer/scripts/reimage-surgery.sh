@@ -8,7 +8,10 @@ ROOT_GIB="${ROOT_GIB:?set ROOT_GIB (= var.volume_size)}"
 
 command -v parted >/dev/null || dnf -y install parted
 command -v rsync  >/dev/null || dnf -y install rsync
-[[ "${ARCH}" = arm64 ]] && { command -v mkfs.fat >/dev/null || dnf -y install dosfstools; }
+
+if [[ "${ARCH}" = arm64 ]]; then
+  command -v mkfs.fat >/dev/null || dnf -y install dosfstools
+fi
 
 for tool in mkfs.xfs mkswap partprobe xfs_freeze blkid findmnt; do
   command -v "${tool}" >/dev/null || { echo "MISSING required tool: ${tool}" >&2; exit 1; }
@@ -22,8 +25,11 @@ for _ in $(seq 1 30); do
   while read -r name size type; do
     [[ "${type}" = disk && "${size}" = "${want}" ]] || continue
     [[ $(lsblk -rno NAME "/dev/${name}" | wc -l) -eq 1 ]] || continue   # blank = no partitions
-    TGT="/dev/${name}"; break
+
+    TGT="/dev/${name}"
+    break
   done < <(lsblk -bdno NAME,SIZE,TYPE)
+
   [[ -n "${TGT}" ]] && break
   sleep 3
 done
@@ -34,8 +40,9 @@ echo "surrogate target: ${TGT}"
 # fail-safe: thaw /boot + unmount the target on any exit
 cleanup_surgery() {
   xfs_freeze -u /boot 2>/dev/null || true
-  for m in $(mount | awk '{print $3}' | grep '^/mnt/target' | sort -r); do
-    umount "${m}" 2>/dev/null || umount -l "${m}" 2>/dev/null || true
+
+  for mount_point in $(mount | awk '{print $3}' | grep '^/mnt/target' | sort -r); do
+    umount "${mount_point}" 2>/dev/null || umount -l "${mount_point}" 2>/dev/null || true
   done
 }
 trap cleanup_surgery EXIT
@@ -56,7 +63,12 @@ fi
 echo "source: root=${SRC_ROOT_DEV} (${SRC_ROOT_UUID}) boot=${SRC_BOOT_DEV} swap=${SRC_SWAP_UUID:-none} lvm=${IS_LVM}"
 
 # partition the surrogate (offsets in docs/reimage.md; root is the last, growable partition)
-case "${TGT}" in *[0-9]) PART="${TGT}p" ;; *) PART="${TGT}" ;; esac # nvme needs a 'p' suffix, sd* does not
+# nvme needs a 'p' suffix, sd* does not
+case "${TGT}" in
+  *[0-9]) PART="${TGT}p" ;;
+  *)      PART="${TGT}" ;;
+esac
+
 wipefs -a "${TGT}" || true
 parted -s "${TGT}" mklabel gpt
 
@@ -75,23 +87,47 @@ else
   parted -s "${TGT}" mkpart root xfs        5123MiB 100%
 fi
 
-BOOT_P=${PART}2; SWAP_P=${PART}3; ROOT_P=${PART}4
-partprobe "${TGT}"; udevadm settle; sleep 2
+BOOT_P=${PART}2
+SWAP_P=${PART}3
+ROOT_P=${PART}4
+
+partprobe "${TGT}"
+udevadm settle
+sleep 2
 
 # /boot: dd verbatim (GRUB can't read EL10 nrext64 xfs); root/swap: fresh fs, cloned UUIDs
 src_boot_sz=$(blockdev --getsize64 "${SRC_BOOT_DEV}")
 tgt_boot_sz=$(blockdev --getsize64 "${BOOT_P}")
 [[ "${src_boot_sz}" -le "${tgt_boot_sz}" ]] || { echo "FATAL: source /boot ${src_boot_sz}B > target ${tgt_boot_sz}B" >&2; exit 1; }
-xfs_freeze -f /boot; dd if="${SRC_BOOT_DEV}" of="${BOOT_P}" bs=4M conv=fsync; xfs_freeze -u /boot
-if [[ -n "${SRC_SWAP_UUID}" ]]; then mkswap -U "${SRC_SWAP_UUID}" -L swap "${SWAP_P}"; else mkswap -L swap "${SWAP_P}"; fi
+
+xfs_freeze -f /boot
+dd if="${SRC_BOOT_DEV}" of="${BOOT_P}" bs=4M conv=fsync
+xfs_freeze -u /boot
+
+if [[ -n "${SRC_SWAP_UUID}" ]]; then
+  mkswap -U "${SRC_SWAP_UUID}" -L swap "${SWAP_P}"
+else
+  mkswap -L swap "${SWAP_P}"
+fi
+
 mkfs.xfs -f -m uuid="${SRC_ROOT_UUID}" "${ROOT_P}"
 [[ "${ARCH}" = arm64 ]] && mkfs.fat -F32 -n EFI -i "${FATID}" "${ESP_P}"
-partprobe "${TGT}"; udevadm settle
+
+partprobe "${TGT}"
+udevadm settle
 
 # mount surrogate (-o nouuid: same-UUID source still mounted) + copy root
-mkdir -p /mnt/target; mount -o nouuid "${ROOT_P}" /mnt/target
-mkdir -p /mnt/target/boot; mount -o nouuid "${BOOT_P}" /mnt/target/boot
-if [[ "${ARCH}" = arm64 ]]; then mkdir -p /mnt/target/boot/efi; mount "${ESP_P}" /mnt/target/boot/efi; fi
+mkdir -p /mnt/target
+mount -o nouuid "${ROOT_P}" /mnt/target
+
+mkdir -p /mnt/target/boot
+mount -o nouuid "${BOOT_P}" /mnt/target/boot
+
+if [[ "${ARCH}" = arm64 ]]; then
+  mkdir -p /mnt/target/boot/efi
+  mount "${ESP_P}" /mnt/target/boot/efi
+fi
+
 rsync -aHAXx --numeric-ids --exclude='/tmp/*' --exclude='/var/tmp/*' --exclude='/mnt/*' / /mnt/target/
 [[ "${ARCH}" = arm64 ]] && rsync -rt --no-perms --no-owner --no-group /boot/efi/ /mnt/target/boot/efi/
 
@@ -99,6 +135,7 @@ rsync -aHAXx --numeric-ids --exclude='/tmp/*' --exclude='/var/tmp/*' --exclude='
 if [[ "${IS_LVM}" = 1 ]]; then
   for cfg in /mnt/target/boot/loader/entries/*.conf /mnt/target/etc/kernel/cmdline; do
     [[ -e "${cfg}" ]] || continue
+
     sed -i -e "s#root=${SRC_ROOT_DEV}#root=UUID=${SRC_ROOT_UUID}#g" \
            -e "s#root=/dev/dm-[0-9]*#root=UUID=${SRC_ROOT_UUID}#g" \
            -e 's#rd\.lvm\.lv=[^ ]*##g' "${cfg}"
@@ -126,11 +163,15 @@ done < <(awk '$1 !~ /^#/ && ($2=="/boot"||$2=="/boot/efi"||$3=="swap"){print $1,
 
 # bootloader: arm64 uses the verbatim ESP; x86_64 reinstalls grub2 (os-prober off)
 if [[ "${ARCH}" = x86_64 ]]; then
-  for f in proc sys dev dev/pts run; do mountpoint -q "/mnt/target/${f}" || mount --bind "/${f}" "/mnt/target/${f}"; done
+  for bind_dir in proc sys dev dev/pts run; do
+    mountpoint -q "/mnt/target/${bind_dir}" || mount --bind "/${bind_dir}" "/mnt/target/${bind_dir}"
+  done
 
   if grep -q '^GRUB_DISABLE_OS_PROBER=' /mnt/target/etc/default/grub; then
     sed -i 's/^GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=true/' /mnt/target/etc/default/grub
-  else echo 'GRUB_DISABLE_OS_PROBER=true' >> /mnt/target/etc/default/grub; fi
+  else
+    echo 'GRUB_DISABLE_OS_PROBER=true' >> /mnt/target/etc/default/grub
+  fi
 
   chroot /mnt/target /bin/bash -c "grub2-install --target=i386-pc --recheck ${TGT} && grub2-mkconfig -o /boot/grub2/grub.cfg" >/dev/null
 
@@ -139,12 +180,14 @@ if [[ "${ARCH}" = x86_64 ]]; then
        /mnt/target/boot/loader/entries/ /mnt/target/boot/grub2/grub.cfg \
        /mnt/target/boot/grub2/grubenv /mnt/target/etc/default/grub \
        /mnt/target/etc/kernel/cmdline 2>/dev/null; then
-    echo "FATAL: LVM references survive in the x86_64 boot config" >&2; exit 1
+    echo "FATAL: LVM references survive in the x86_64 boot config" >&2
+    exit 1
   fi
 
   # gate: the cmdline must pin root by the cloned UUID
   if ! grep -aqrs "root=UUID=${SRC_ROOT_UUID}" /mnt/target/boot/loader/entries/ /mnt/target/etc/kernel/cmdline; then
-    echo "FATAL: no root=UUID=${SRC_ROOT_UUID} in the x86_64 boot cmdline" >&2; exit 1
+    echo "FATAL: no root=UUID=${SRC_ROOT_UUID} in the x86_64 boot cmdline" >&2
+    exit 1
   fi
 fi
 
@@ -157,5 +200,7 @@ touch /mnt/target/.autorelabel
 
 # unmount deepest-first
 sync
-for m in $(mount | awk '{print $3}' | grep '^/mnt/target' | sort -r); do umount "${m}" 2>/dev/null || umount -l "${m}"; done
+for mount_point in $(mount | awk '{print $3}' | grep '^/mnt/target' | sort -r); do
+  umount "${mount_point}" 2>/dev/null || umount -l "${mount_point}"
+done
 echo "REIMAGE_SURGERY_OK root_uuid=${SRC_ROOT_UUID} lvm_converted=${IS_LVM}"
