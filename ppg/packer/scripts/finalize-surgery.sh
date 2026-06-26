@@ -24,6 +24,10 @@ system_info:
 CFG
 systemctl enable amazon-ssm-agent   # installed at launch by the template user_data; enable for the baked image
 dnf -y update                       # latest errata (the raw base ships a few behind)
+# kernel-install defers a freshly-installed kernel's initramfs to first boot; the fold shrinks BEFORE any
+# boot, so build every installed kernel's initramfs NOW, or the dd below captures /boot with the new default
+# kernel missing its initramfs (-> unbootable). The old two-step path got this from its pre-shrink boot.
+dracut --force --regenerate-all
 
 # === 2. locate the surrogate: Packer attached a blank ROOT_GIB volume. The builder root is the larger
 #        raw base, so the surrogate is the blank disk of exactly ROOT_GIB (no VolumeId to match under Packer). ===
