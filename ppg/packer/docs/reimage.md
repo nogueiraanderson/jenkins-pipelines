@@ -19,12 +19,23 @@ this because their bases are already at `var.volume_size`.
 
 ## Where it fits
 
+```mermaid
+flowchart TD
+  oracle["Oracle OL10 cloud image"]
+  candA["ppg-ol10-candidate<br/>full-size, LVM"]
+  prebase["ppg-ol10-prebase<br/>full-size, bootable"]
+  candB["ppg-reimage-candidate<br/>var.volume_size"]
+  consumed["ppg-package-test<br/>consumed base"]
+  oracle -->|"bootstrap-ol10: import-snapshot + finalize (amazon-ebs)"| candA
+  candA -->|"bootstrap-ol10-verify: BOOT (generates the new-kernel initramfs) then promote"| prebase
+  prebase -->|"reimage-ol10: amazon-ebssurrogate shrink"| candB
+  candB -->|"reimage-ol10-verify: two-size boot + smoke then promote"| consumed
+  consumed -->|"refresh (amazon-ebs): sustains the size, each build is the next source"| consumed
 ```
-bootstrap-ol10  ->  prebase (full-size, role=ppg-ol10-prebase, NOT consumed)
-reimage-ol10    ->  candidate (var.volume_size, role=ppg-reimage-candidate)
-reimage-..-verify -> promote to role=ppg-package-test (the consumed base)
-refresh         ->  sustains var.volume_size from here (each build is the next source)
-```
+
+The two BOOT gates are load-bearing: `bootstrap-ol10-verify` boots the full-size base
+(which is when the freshly-installed kernel's initramfs is generated and `/boot` settles),
+so the later shrink copies a complete, bootable `/boot`.
 
 It is **one-time per arch**. The refresh sustains the size afterward. Re-run it
 only when:
@@ -32,15 +43,34 @@ only when:
 - A fresh oversized source is re-bootstrapped (FORCE rebuild, or a new Oracle image).
 - `var.volume_size` is reduced further (the refresh can grow or hold a root, never shrink below the current snapshot).
 
-`reimage-ol10` is **serial per arch**: run one arch's shrink to completion before
-starting another for the same arch (the builder + recovery tags are keyed per run).
+## How it runs (amazon-ebssurrogate)
 
-## Two scripts
+`reimage/reimage-ol10.pkr.hcl` is a Packer `amazon-ebssurrogate` build: it launches a builder FROM the
+prebase (`source_ami_filter` role=`ppg-ol10-prebase`), attaches a blank `var.volume_size` surrogate
+(`launch_block_device_mappings`), runs `scripts/reimage-surgery.sh` as a provisioner, then snapshots the
+surrogate and registers the candidate AMI from it (`ami_root_device`). Packer owns the
+launch / attach / snapshot / register / cleanup lifecycle, so there is no hand-rolled orchestration.
 
-| Script | Runs on | Does |
-|--------|---------|------|
-| `reimage-ol10.sh` | control host | Launch a builder FROM the base, attach a fresh `ROOT_GIB` volume, drive the surgery over SSH, snapshot + register the candidate AMI, clean up. |
-| `reimage-surgery.sh` | the builder (over SSH, as root) | Reproduce the running root's partition scheme on the target volume at the smaller size. The builder boots FROM the base being shrunk, so the live root IS the source content. |
+`scripts/reimage-surgery.sh` (the one provisioner) runs as root on the builder. The builder boots FROM
+the **already-booted** prebase being shrunk, so its live root + complete `/boot` ARE the source; the
+script locates the blank `ROOT_GIB` surrogate by size (Packer attaches it, so there is no VolumeId to
+match) and reproduces the root onto it at the smaller size. No `dnf`/kernel work happens here, so the
+prebase's already-generated initramfs is simply copied (this is why the shrink runs AFTER the prebase
+boot-verify, not folded into finalize).
+
+```mermaid
+flowchart LR
+  prebase["prebase AMI<br/>role=ppg-ol10-prebase"]
+  subgraph builder["Packer builder (amazon-ebssurrogate)"]
+    direction TB
+    root["booted prebase root<br/>+ complete /boot = SOURCE"]
+    surrogate["blank var.volume_size<br/>surrogate at /dev/sdf"]
+  end
+  ami["var.volume_size candidate AMI<br/>role=ppg-reimage-candidate"]
+  prebase -->|"launch FROM"| root
+  root -->|"reimage-surgery.sh: dd /boot, clone UUIDs, LVM to plain"| surrogate
+  surrogate -->|"Packer ami_root_device: snapshot + register"| ami
+```
 
 ## Surgery internals
 
@@ -102,11 +132,10 @@ Every gate refuses to produce a possibly-unbootable or wrongly-sized image:
 
 ## Cleanup and recovery
 
-`reimage-ol10.sh` traps EXIT and recovers its builder instance, target volume,
-and (on a pre-completion failure) the candidate AMI + snapshot by a unique
-per-run tag, so a CLI that dies after creating a resource but before returning its
-id still leaves nothing behind. After the candidate is registered the trap keeps
-the AMI + snapshot (they are the deliverable).
+Packer owns the build's instance, surrogate volume, snapshot, and AMI lifecycle,
+including cleanup on failure. `reimage-surgery.sh` additionally traps EXIT to thaw
+`/boot` if still frozen and unmount `/mnt/target` deepest-first, so a mid-surgery
+failure leaves the builder clean for Packer's detach.
 
 An orphaned candidate from a failed `verify` (role `ppg-reimage-candidate`, never
 consumed) is reaped by `just prune-stale`.
