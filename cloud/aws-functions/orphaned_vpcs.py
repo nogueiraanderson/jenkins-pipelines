@@ -1,11 +1,17 @@
-# Remove unused vpcs and connected resources.
+"""
+Module for removing unused VPCs and their connected resources.
+
+This module provides functionality to identify and clean up VPCs that are
+no longer needed based on tagging and age criteria.
+"""
 import logging
 import datetime
 import boto3
 from time import sleep
 from botocore.exceptions import ClientError
 from boto3.exceptions import Boto3Error
-from utils import get_regions_list
+from utils import get_regions_list, get_default_vpc
+from vpc_helpers import validate_vpc_tags, get_vpc_age_hours
 
 
 def is_vpc_to_terminate(vpc):
