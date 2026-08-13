@@ -1,4 +1,4 @@
-// Compile percona-xtrabackup 8.1 from an arbitrary repo/ref into tarballs per platform.
+// Compile percona-xtrabackup 8.1 from an arbitrary repo/ref into per-platform tarballs.
 pipeline {
     parameters {
         string(
