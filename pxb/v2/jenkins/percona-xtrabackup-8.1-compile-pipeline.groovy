@@ -1,3 +1,4 @@
+// Compile percona-xtrabackup 8.1 from an arbitrary repo/ref into tarballs per platform.
 pipeline {
     parameters {
         string(
