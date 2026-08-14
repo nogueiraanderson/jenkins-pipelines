@@ -1,0 +1,11 @@
+{
+  "sets": {
+    "param-smoke": {
+      "yaml_dir": "smoke",
+      "jobs": ["smoke-echo-param", "smoke-plain"],
+      "stages": {"one": ["smoke-echo-param"], "two": ["smoke-plain"]},
+      "stage_order": ["one", "two"],
+      "consumes": {"two": "one"}
+    }
+  }
+}

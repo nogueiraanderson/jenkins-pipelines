@@ -1,0 +1,1 @@
+echo "CLOUD=${params.CLOUD}"

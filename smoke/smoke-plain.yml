@@ -1,0 +1,14 @@
+- job:
+    name: smoke-plain
+    project-type: pipeline
+    description: |
+        Throwaway jenkins-preview parameter smoke. Safe to delete.
+    pipeline-scm:
+      scm:
+        - git:
+            url: https://github.com/Percona-Lab/jenkins-pipelines
+            branches:
+            - "master"
+            wipe-workspace: false
+      lightweight-checkout: true
+      script-path: smoke/smoke-plain.groovy

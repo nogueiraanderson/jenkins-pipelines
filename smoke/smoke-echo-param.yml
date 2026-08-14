@@ -1,0 +1,19 @@
+- job:
+    name: smoke-echo-param
+    project-type: pipeline
+    description: |
+        Throwaway jenkins-preview parameter smoke. Safe to delete.
+    pipeline-scm:
+      scm:
+        - git:
+            url: https://github.com/Percona-Lab/jenkins-pipelines
+            branches:
+            - "master"
+            wipe-workspace: false
+      lightweight-checkout: true
+      script-path: smoke/smoke-echo-param.groovy
+    parameters:
+    - string:
+        name: CLOUD
+        default: "Hetzner"
+        description: target cloud to echo
