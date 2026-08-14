@@ -17,3 +17,13 @@
         name: CLOUD
         default: "Hetzner"
         description: target cloud to echo
+    - bool:
+        name: FLAG
+        default: false
+        description: boolean probe
+    - choice:
+        name: PICK
+        choices:
+        - alpha
+        - beta
+        description: choice probe
