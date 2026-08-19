@@ -1,0 +1,34 @@
+{
+  "sets": {
+    "pxb-8.0": {
+      "yaml_dir": "pxb/v2/jenkins",
+      "jobs": ["percona-xtrabackup-8.0-compile-pipeline", "percona-xtrabackup-8.0-test-pipeline"],
+      "stages": {
+        "compile": ["percona-xtrabackup-8.0-compile-pipeline"],
+        "test": ["percona-xtrabackup-8.0-test-pipeline"]
+      },
+      "stage_order": ["compile", "test"],
+      "consumes": {"test": "compile"}
+    },
+    "pxb-8.1": {
+      "yaml_dir": "pxb/v2/jenkins",
+      "jobs": ["percona-xtrabackup-8.1-compile-pipeline", "percona-xtrabackup-8.1-test-pipeline"],
+      "stages": {
+        "compile": ["percona-xtrabackup-8.1-compile-pipeline"],
+        "test": ["percona-xtrabackup-8.1-test-pipeline"]
+      },
+      "stage_order": ["compile", "test"],
+      "consumes": {"test": "compile"}
+    },
+    "pxb-9.x": {
+      "yaml_dir": "pxb/v2/jenkins",
+      "jobs": ["percona-xtrabackup-9.x-compile-pipeline", "percona-xtrabackup-9.x-test-pipeline"],
+      "stages": {
+        "compile": ["percona-xtrabackup-9.x-compile-pipeline"],
+        "test": ["percona-xtrabackup-9.x-test-pipeline"]
+      },
+      "stage_order": ["compile", "test"],
+      "consumes": {"test": "compile"}
+    }
+  }
+}
