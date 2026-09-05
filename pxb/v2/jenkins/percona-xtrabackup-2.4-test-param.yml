@@ -19,6 +19,14 @@
         artifact-num-to-keep: 30
     parameters:
     - string:
+        name: COMPILE_JOB
+        default: ""
+        description: Optional sibling compile producer. Empty uses this matrix's matching compile matrix.
+    - string:
+        name: USE_BINARIES_FROM_BUILD_ID
+        default: "lastSuccessfulBuild"
+        description: Compile build number. Standalone latest is pinned once before matrix fan-out.
+    - string:
         name: BOOTSTRAP_URL
         default: ""
         description: 

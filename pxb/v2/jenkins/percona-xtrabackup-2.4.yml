@@ -60,3 +60,6 @@
         projects:
             - name: percona-xtrabackup-2.4-test-param
               current-parameters: true
+              predefined-parameters: |
+                COMPILE_JOB=percona-xtrabackup-2.4-compile-param
+                USE_BINARIES_FROM_BUILD_ID=${{PERCONA_XTRABACKUP_2_4_COMPILE_PARAM_BUILD_NUMBER}}

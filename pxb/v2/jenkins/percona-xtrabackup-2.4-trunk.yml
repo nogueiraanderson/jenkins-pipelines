@@ -26,8 +26,12 @@
           build-step-failure-threshold: FAILURE
           unstable-threshold: never
           failure-threshold: FAILURE
+    - trigger-builds:
       - project: percona-xtrabackup-2.4-test-param
         current-parameters: false
+        predefined-parameters: |
+          COMPILE_JOB=percona-xtrabackup-2.4-compile-param
+          USE_BINARIES_FROM_BUILD_ID=${{TRIGGERED_BUILD_NUMBERS_percona_xtrabackup_2_4_compile_param}}
         block: true
         block-thresholds:
           build-step-failure-threshold: FAILURE

@@ -9,7 +9,7 @@ bash pxb/v2/tests/check
 
 The checks parse actual Jenkinsfiles and reject runtime repository fetches that
 bypass `checkout scm`. They execute the actual ARCH guards, matrix snapshot hook,
-copy helper and 8.0 consumer DSL through their Jenkins-step boundaries. The actual
+copy helper and all four families' compile/consumer DSL through their Jenkins-step boundaries. The actual
 rendered shell strings pass `bash -n`. Python tests run the real JJB renderer and
 execute the artifact fetcher and Docker runner with only their external commands
 replaced by isolated fixtures.
@@ -18,7 +18,7 @@ These are local contract checks, not a complete Jenkins or product validation.
 Run a pinned Jenkins canary as well. Do not treat an unpublished local fix as
 validated by a build of a different remote revision.
 
-The 8.0 compile and test pipelines check native worker architecture and Python
+The 2.4, 8.0, 8.1 and 9.x compile and test pipelines check native worker architecture and Python
 3.9+ immediately after their pinned SCM checkout. The repository preview set
 publishes only the 8.0 compile and regular test pipelines. Run each architecture
 with its exact completed compile build number, then inspect the archived input
@@ -59,10 +59,10 @@ Never publish this selection canary under an existing job name. Do not copy or
 delete existing MultiJob phase names, the plugin's folder-blind deletion listener
 can affect production jobs with matching basenames.
 
-## Pinned compile input, 8.0 integration
+## Pinned compile input
 
-The 8.0 regular and cloud consumers accept `COMPILE_JOB` plus
-`USE_BINARIES_FROM_BUILD_ID`. Normal 8.0 launchers pass their just-completed
+All four families' regular consumers and the 8.0/8.1 cloud consumers accept `COMPILE_JOB` plus
+`USE_BINARIES_FROM_BUILD_ID`. Their normal launchers pass their just-completed
 compile matrix build. The test matrix snapshots its producer before fan-out.
 A standalone pipeline defaults to its sibling compile pipeline and snapshots
 the latest successful build once. An explicit positive build number overrides
@@ -91,5 +91,13 @@ worker. Run it under unique producer/test pipeline names in the same folder.
 It validates native Copy Artifact and waitForBuild behavior, not S3 retrieval
 or PXB binaries. Retain positive and intentional failure builds for review.
 
-The other PXB consumer families are not yet integrated with the new fetcher.
-Do not deploy their matrix snapshot changes independently of their consumers.
+Deploy matrix snapshot changes together with their matching consumers. The 9.x
+single-platform job builds and tests within one run and does not use this cross-job
+contract. Product branch and bootstrap compatibility remain separate validation
+requirements. In particular, the historical 8.1 job name does not identify a product
+version. Choose an existing product ref and matching server version explicitly.
+
+Contract coverage includes declared producer parameters, separate blocking trunk
+trigger steps and rejection of missing or malformed checkout revisions before
+artifact copying. A root launcher's exported build-number variable is name-dependent.
+Do not assume a renamed or foldered MultiJob copy preserves that variable.

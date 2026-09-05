@@ -28,19 +28,29 @@ def render_job(source: Path) -> list[ET.Element]:
 
 
 class JobContracts(unittest.TestCase):
-    def test_80_producer_identity_reaches_declared_consumers(self):
-        for suffix in ('test-param', 'test-pipeline', 'test-cloud-pipeline'):
-            job, = render_job(JOBS / f'percona-xtrabackup-8.0-{suffix}.yml')
-            names = {node.text for node in job.findall('.//parameterDefinitions/*/name')}
-            self.assertTrue({'COMPILE_JOB', 'USE_BINARIES_FROM_BUILD_ID'} <= names, suffix)
-        for filename, variable in (
-            ('percona-xtrabackup-8.0.yml', 'PERCONA_XTRABACKUP_8_0_COMPILE_PARAM_BUILD_NUMBER'),
-            ('percona-xtrabackup-8.0-trunk.yml', 'TRIGGERED_BUILD_NUMBERS_percona_xtrabackup_8_0_compile_param'),
-        ):
-            job, = render_job(JOBS / filename)
-            text = ET.tostring(job, encoding='unicode')
-            self.assertIn('USE_BINARIES_FROM_BUILD_ID=${' + variable + '}', text)
-            self.assertIn('COMPILE_JOB=percona-xtrabackup-8.0-compile-param', text)
+    def test_producer_identity_reaches_declared_consumers(self):
+        for family in ('8.0', '9.x', '8.1', '2.4'):
+            suffixes = ['test-param', 'test-pipeline']
+            if family in ('8.0', '8.1'):
+                suffixes.append('test-cloud-pipeline')
+            for suffix in suffixes:
+                job, = render_job(JOBS / f'percona-xtrabackup-{family}-{suffix}.yml')
+                names = {node.text for node in job.findall('.//parameterDefinitions/*/name')}
+                self.assertTrue({'COMPILE_JOB', 'USE_BINARIES_FROM_BUILD_ID'} <= names, (family, suffix))
+            identifier = f'percona_xtrabackup_{family.replace(".", "_")}_compile_param'
+            for filename, variable in (
+                (f'percona-xtrabackup-{family}.yml', identifier.upper() + '_BUILD_NUMBER'),
+                (f'percona-xtrabackup-{family}-trunk.yml', 'TRIGGERED_BUILD_NUMBERS_' + identifier),
+            ):
+                job, = render_job(JOBS / filename)
+                text = ET.tostring(job, encoding='unicode')
+                self.assertIn('USE_BINARIES_FROM_BUILD_ID=${' + variable + '}', text)
+                self.assertIn(f'COMPILE_JOB=percona-xtrabackup-{family}-compile-param', text)
+                if filename.endswith('-trunk.yml'):
+                    triggers = job.findall('builders/hudson.plugins.parameterizedtrigger.TriggerBuilder')
+                    self.assertEqual(len(triggers), 2, 'The compile result must be exported before expanding test parameters')
+                    self.assertEqual(triggers[0].findtext('.//projects'), f'percona-xtrabackup-{family}-compile-param')
+                    self.assertEqual(triggers[1].findtext('.//projects'), f'percona-xtrabackup-{family}-test-param')
 
     def test_pinning_canary_orders_first_cell_before_second(self):
         result = subprocess.run(
