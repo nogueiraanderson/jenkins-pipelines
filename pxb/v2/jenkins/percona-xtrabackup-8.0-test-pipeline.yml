@@ -14,6 +14,14 @@
       lightweight-checkout: true
       script-path: pxb/v2/jenkins/percona-xtrabackup-8.0-test-pipeline.groovy
     parameters:
+    - string:
+        name: COMPILE_JOB
+        default: ""
+        description: Optional sibling compile producer. Empty uses the matching compile pipeline.
+    - string:
+        name: USE_BINARIES_FROM_BUILD_ID
+        default: "lastSuccessfulBuild"
+        description: Exact compile build number, or latest successful resolved once for a standalone run.
     - choice:
         name: DOCKER_OS
         choices:
@@ -82,4 +90,3 @@
         - "Hetzner"
         - "AWS"
         description: "Host provider for Jenkins workers"
-

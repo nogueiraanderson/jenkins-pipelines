@@ -16,6 +16,14 @@ String MICRO_LABEL = (params.CLOUD == 'AWS') ? 'micro-amazon' : 'launcher-x64'
 
 pipeline {
     parameters {
+        string(
+            defaultValue: '',
+            description: 'Compile producer in this folder. Empty selects the sibling compile pipeline.',
+            name: 'COMPILE_JOB')
+        string(
+            defaultValue: 'lastSuccessfulBuild',
+            description: 'Exact successful compile build number, or lastSuccessfulBuild for a standalone run.',
+            name: 'USE_BINARIES_FROM_BUILD_ID')
         choice(
             choices: 'centos:8\noraclelinux:9\nubuntu:focal\nubuntu:jammy\nubuntu:noble\ndebian:bullseye\ndebian:bookworm\nasan',
             description: 'OS version for compilation',
@@ -89,6 +97,7 @@ pipeline {
                     }
                     sh 'echo Prepare: \$(date -u "+%s")'
                     checkout scm
+                    sh 'python3 pxb/v2/ci/verify_worker.py'
                     sh '''#!/bin/bash
                         # sudo is needed for better node recovery after compilation failure
                         # if building failed on compilation stage directory will have files owned by docker user
@@ -99,43 +108,24 @@ pipeline {
                         sudo git -C sources reset --hard || :
                         sudo git -C sources clean -xdf   || :
                         '''
-                    copyArtifacts filter: 'COMPILE_BUILD_TAG', projectName: 'percona-xtrabackup-8.0-compile-param', selector: lastSuccessful()
+                    script {
+                        load('pxb/v2/ci/copyCompileInput.groovy').call()
+                    }
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: '24e68886-c552-4033-8503-ed85bbaa31f3', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                        timeout(time: 10, unit: 'MINUTES') {
+                            sh '''#!/bin/bash
+                                set -euo pipefail
+                                python3 pxb/v2/ci/fetch_compile_artifact.py \\
+                                    --input compile-input \\
+                                    --output pxb/v2/sources/results/binary.tar.gz \\
+                                    --provenance pxb/v2/sources/results/compile-input.json
+                            '''
+                        }
+                        archiveArtifacts artifacts: 'pxb/v2/sources/results/compile-input.json', followSymlinks: false, fingerprint: true
                         sh '''#!/bin/bash
-                            for file in $(find . -name "COMPILE_BUILD_TAG"); do
-                                COMPILE_BUILD_TAG_VAR+=" $(cat $file)"
-                            done
-
-                            for tarball in $(echo $COMPILE_BUILD_TAG_VAR); do
-                                if [[ $CMAKE_BUILD_TYPE == "Debug" ]] && [[ ${DOCKER_OS} != "asan" ]]; then
-                                    TARBALL=$(aws s3 ls pxb-build-cache/$tarball/ | grep ${ARCH}-${DOCKER_OS//:/-}-debug | awk {'print $4'})
-                                    if [[ ! -z $TARBALL ]]; then
-                                        break
-                                    fi
-                                elif [[ $CMAKE_BUILD_TYPE == "RelWithDebInfo" ]] && [[ ${DOCKER_OS} != "asan" ]]; then
-                                    TARBALL+=$(aws s3 ls pxb-build-cache/$tarball/ | grep ${ARCH}-${DOCKER_OS//:/-}.tar.gz | awk {'print $4'})
-                                    if [[ ! -z $TARBALL ]]; then
-                                        break
-                                    fi
-                                elif [[ $CMAKE_BUILD_TYPE == "Debug" ]] && [[ ${DOCKER_OS} == "asan" ]]; then
-                                    TARBALL+=$(aws s3 ls pxb-build-cache/$tarball/ | grep ${ARCH}-${DOCKER_OS//:/-}-asan-debug | awk {'print $4'})
-                                    if [[ ! -z $TARBALL ]]; then
-                                        break
-                                    fi
-                                elif [[ $CMAKE_BUILD_TYPE == "RelWithDebInfo" ]] && [[ ${DOCKER_OS} == "asan" ]]; then
-                                    TARBALL+=$(aws s3 ls pxb-build-cache/$tarball/ | grep ${ARCH}-${DOCKER_OS//:/-}-asan | awk {'print $4'})
-                                    if [[ ! -z $TARBALL ]]; then
-                                        break
-                                    fi
-                                fi
-                            done
-                            PATH_TO_TARBALL=$tarball
-
+                            set -euo pipefail
+                            export AWS_MAX_ATTEMPTS=3 AWS_RETRY_MODE=standard
                             cd pxb/v2
-
-                            until aws s3 cp --no-progress s3://pxb-build-cache/$PATH_TO_TARBALL/$TARBALL ./sources/results/binary.tar.gz; do
-                                sleep 5
-                            done
                             aws ecr-public get-login-password --region us-east-1 | docker login -u AWS --password-stdin public.ecr.aws/e7j3v3n0
                             echo Test: \$(date -u "+%s")
                             sg docker -c "
@@ -152,9 +142,9 @@ pipeline {
                                 tar -zcvf results.tar.gz sources/results/results/
                                 mv results.tar.gz sources/results/
                             fi
-                            until aws s3 sync --no-progress --acl public-read --exclude 'binary.tar.gz' ./sources/results/ s3://pxb-build-cache/${BUILD_TAG}/; do
-                                sleep 5
-                            done
+                            aws s3 sync --no-progress --acl public-read --exclude 'binary.tar.gz' \\
+                                --cli-connect-timeout 10 --cli-read-timeout 30 \\
+                                ./sources/results/ s3://pxb-build-cache/${BUILD_TAG}/
                         '''
                     }
                 }

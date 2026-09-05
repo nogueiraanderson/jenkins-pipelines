@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.."
+
+groovy pxb/v2/tests/verify-pipeline-source.groovy
+groovy pxb/v2/tests/verify-arch-preflight.groovy
+groovy pxb/v2/tests/verify-matrix-input.groovy
+groovy pxb/v2/tests/verify-copy-compile-input.groovy
+groovy pxb/v2/tests/verify-artifact-pipeline.groovy
+uv run --no-project python -m unittest discover -s pxb/v2/tests -p 'test_*.py' -v
+bash -n pxb/v2/docker/run-test
+git diff --check -- pxb/v2

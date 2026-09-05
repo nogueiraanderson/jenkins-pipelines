@@ -9,6 +9,9 @@
     auth-token: xbparam24
     node: launcher-x64
     properties:
+    - inject:
+        groovy-content: !include-raw-verbatim: ../ci/pin-matrix-input.groovy
+        groovy-sandbox: false
     - groovy-label:
         script: |
             return (CLOUD == 'AWS') ? 'micro-amazon' : 'launcher-x64'
@@ -104,6 +107,8 @@
       - project: percona-xtrabackup-8.1-test-pipeline
         current-parameters: true
         predefined-parameters: |
+          COMPILE_JOB=${{PXB_COMPILE_JOB}}
+          USE_BINARIES_FROM_BUILD_ID=${{PXB_COMPILE_BUILD}}
           DOCKER_OS=${{DOCKER_OS}}
           ARCH=${{ARCH}}
           CMAKE_BUILD_TYPE=${{CMAKE_BUILD_TYPE}}

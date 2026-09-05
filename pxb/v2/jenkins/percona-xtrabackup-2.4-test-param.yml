@@ -9,6 +9,9 @@
     auth-token: xbparam24
     node: micro-amazon
     properties:
+    - inject:
+        groovy-content: !include-raw-verbatim: ../ci/pin-matrix-input.groovy
+        groovy-sandbox: false
     - build-discarder:
         days-to-keep: -1
         num-to-keep: 30
@@ -83,6 +86,8 @@
       - project: percona-xtrabackup-2.4-test-pipeline
         current-parameters: true
         predefined-parameters: |
+          COMPILE_JOB=${{PXB_COMPILE_JOB}}
+          USE_BINARIES_FROM_BUILD_ID=${{PXB_COMPILE_BUILD}}
           DOCKER_OS=${{DOCKER_OS}}
           ARCH=${{ARCH}}
           CMAKE_BUILD_TYPE=${{CMAKE_BUILD_TYPE}}

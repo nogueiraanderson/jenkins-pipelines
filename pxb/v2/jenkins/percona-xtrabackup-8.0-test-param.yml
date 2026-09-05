@@ -9,6 +9,9 @@
     auth-token: xbparam24
     node: launcher-x64
     properties:
+    - inject:
+        groovy-content: !include-raw-verbatim: ../ci/pin-matrix-input.groovy
+        groovy-sandbox: false
     - groovy-label:
         script: |
             return (CLOUD == 'AWS') ? 'micro-amazon' : 'launcher-x64'
@@ -19,6 +22,14 @@
         artifact-days-to-keep: -1
         artifact-num-to-keep: 30
     parameters:
+    - string:
+        name: COMPILE_JOB
+        default: ""
+        description: Optional sibling compile producer. Empty uses this matrix's matching compile matrix.
+    - string:
+        name: USE_BINARIES_FROM_BUILD_ID
+        default: "lastSuccessfulBuild"
+        description: Compile build number. Standalone latest is pinned once before matrix fan-out.
     - matrix-combinations:
         name: MATRIX_COMBINATIONS
         description: Routine platforms selected by default. Select All for full release coverage.
@@ -100,6 +111,8 @@
       - project: percona-xtrabackup-8.0-test-pipeline
         current-parameters: true
         predefined-parameters: |
+          COMPILE_JOB=${{PXB_COMPILE_JOB}}
+          USE_BINARIES_FROM_BUILD_ID=${{PXB_COMPILE_BUILD}}
           DOCKER_OS=${{DOCKER_OS}}
           ARCH=${{ARCH}}
           CMAKE_BUILD_TYPE=${{CMAKE_BUILD_TYPE}}

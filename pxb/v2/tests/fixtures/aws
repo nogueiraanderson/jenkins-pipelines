@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Offline AWS boundary for the real artifact-fetch command tests."""
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+
+args = sys.argv[1:]
+assert os.environ['AWS_MAX_ATTEMPTS'] == '3'
+assert os.environ['AWS_RETRY_MODE'] == 'standard'
+assert '--cli-connect-timeout' in args and '--cli-read-timeout' in args
+fixture = json.loads(Path(os.environ['PXB_AWS_FIXTURE']).read_text())
+with Path(os.environ['PXB_AWS_RECORD']).open('a') as log:
+    log.write(json.dumps(args) + '\n')
+if fixture.get('fail'):
+    sys.exit(17)
+if args[:2] == ['s3api', 'list-objects-v2']:
+    prefix = args[args.index('--prefix') + 1]
+    print(json.dumps({'Contents': [{'Key': key, 'Size': Path(path).stat().st_size}
+                                 for key, path in fixture['objects'].items() if key.startswith(prefix)]}))
+elif args[:2] == ['s3', 'cp']:
+    key = args[2].removeprefix('s3://pxb-build-cache/')
+    shutil.copyfile(fixture['objects'][key], args[3])
+else:
+    raise AssertionError(f'Unexpected AWS command: {args}')

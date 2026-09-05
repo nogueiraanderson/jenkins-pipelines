@@ -1,0 +1,16 @@
+{
+  "sets": {
+    "pxb-80-input-validation": {
+      "yaml_dir": "pxb/v2/jenkins",
+      "jobs": [
+        "percona-xtrabackup-8.0-compile-pipeline",
+        "percona-xtrabackup-8.0-test-pipeline"
+      ],
+      "stages": {
+        "compile": ["percona-xtrabackup-8.0-compile-pipeline"],
+        "test": ["percona-xtrabackup-8.0-test-pipeline"]
+      },
+      "stage_order": ["compile", "test"]
+    }
+  }
+}

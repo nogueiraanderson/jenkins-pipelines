@@ -28,6 +28,51 @@ def render_job(source: Path) -> list[ET.Element]:
 
 
 class JobContracts(unittest.TestCase):
+    def test_80_producer_identity_reaches_declared_consumers(self):
+        for suffix in ('test-param', 'test-pipeline', 'test-cloud-pipeline'):
+            job, = render_job(JOBS / f'percona-xtrabackup-8.0-{suffix}.yml')
+            names = {node.text for node in job.findall('.//parameterDefinitions/*/name')}
+            self.assertTrue({'COMPILE_JOB', 'USE_BINARIES_FROM_BUILD_ID'} <= names, suffix)
+        for filename, variable in (
+            ('percona-xtrabackup-8.0.yml', 'PERCONA_XTRABACKUP_8_0_COMPILE_PARAM_BUILD_NUMBER'),
+            ('percona-xtrabackup-8.0-trunk.yml', 'TRIGGERED_BUILD_NUMBERS_percona_xtrabackup_8_0_compile_param'),
+        ):
+            job, = render_job(JOBS / filename)
+            text = ET.tostring(job, encoding='unicode')
+            self.assertIn('USE_BINARIES_FROM_BUILD_ID=${' + variable + '}', text)
+            self.assertIn('COMPILE_JOB=percona-xtrabackup-8.0-compile-param', text)
+
+    def test_pinning_canary_orders_first_cell_before_second(self):
+        result = subprocess.run(
+            ["uv", "run", "--no-project", "python",
+             str(ROOT / "pxb/v2/tests/render-pinning-canary.py"), "consumer"],
+            cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=30, check=True,
+        )
+        job = ET.fromstring(result.stdout)
+        strategy = job.find("executionStrategy")
+        self.assertEqual(strategy.findtext("runSequentially"), "true")
+        self.assertEqual(strategy.findtext("touchStoneCombinationFilter"), "CELL == 'first'")
+        self.assertEqual(strategy.findtext("touchStoneResultCondition"), "SUCCESS")
+        self.assertEqual(job.findtext("assignedNode"), "launcher-x64")
+        self.assertEqual(job.findtext("axes/hudson.matrix.LabelAxis/values/string"), "launcher-x64")
+        self.assertEqual(job.find("scm").get("class"), "hudson.scm.NullSCM")
+        self.assertEqual(
+            job.findtext("properties/EnvInjectJobProperty/info/secureGroovyScript/script"),
+            (ROOT / "pxb/v2/ci/pin-matrix-input.groovy").read_text(),
+        )
+
+    def test_test_matrices_snapshot_the_producer(self):
+        for family in ("2.4", "8.0", "8.1", "9.x"):
+            job, = render_job(JOBS / f"percona-xtrabackup-{family}-test-param.yml")
+            injection = job.find("properties/EnvInjectJobProperty/info")
+            self.assertIsNotNone(injection, f"{family} must pin before matrix fan-out")
+            script = injection.findtext("secureGroovyScript/script")
+            self.assertEqual(script, (ROOT / "pxb/v2/ci/pin-matrix-input.groovy").read_text())
+            values = job.findtext(".//hudson.plugins.parameterizedtrigger.PredefinedBuildParameters/properties")
+            self.assertIn("COMPILE_JOB=${PXB_COMPILE_JOB}", values)
+            self.assertIn("USE_BINARIES_FROM_BUILD_ID=${PXB_COMPILE_BUILD}", values)
+
     def test_selection_canary_pins_parent_and_children(self):
         result = subprocess.run(
             ["uv", "run", "--no-project", "python",
