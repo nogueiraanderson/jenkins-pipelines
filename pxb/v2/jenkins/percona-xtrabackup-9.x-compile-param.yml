@@ -19,6 +19,10 @@
         artifact-days-to-keep: -1
         artifact-num-to-keep: 50
     parameters:
+    - matrix-combinations:
+        name: MATRIX_COMBINATIONS
+        description: Routine platforms selected by default. Select All for full release coverage.
+        filter: 'DOCKER_OS in ["oraclelinux:9", "ubuntu:jammy", "debian:bookworm", "amazonlinux:2023"]'
     - string:
         name: GIT_REPO
         default: "https://github.com/percona/percona-xtrabackup"
