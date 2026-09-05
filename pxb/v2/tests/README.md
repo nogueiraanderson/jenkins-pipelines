@@ -81,6 +81,11 @@ The archived `compile-input.json` records aggregate and child producer IDs, S3
 key, downloaded-byte SHA-256, size and platform. The checksum records the bytes
 consumed, it is not a comparison against an upstream signed checksum.
 
+Consumer provenance uses the full SHA returned by the actual `checkout scm`,
+explicitly exported as `PXB_PIPELINE_REVISION`. Missing or malformed revisions
+fail before AWS retrieval. A global `GIT_COMMIT` is not assumed to exist or to
+identify this checkout when default checkout has been skipped.
+
 The copy canary renderer embeds the actual helper and checks its SHA-256 on the
 worker. Run it under unique producer/test pipeline names in the same folder.
 It validates native Copy Artifact and waitForBuild behavior, not S3 retrieval

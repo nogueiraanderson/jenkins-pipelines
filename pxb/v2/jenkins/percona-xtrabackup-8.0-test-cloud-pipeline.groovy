@@ -90,7 +90,14 @@ pipeline {
                         currentBuild.displayName = "${BUILD_NUMBER} ${CMAKE_BUILD_TYPE}/${DOCKER_OS}"
                     }
                     sh 'echo Prepare: \$(date -u "+%s")'
-                    checkout scm
+                    script {
+                        def checkedOut = checkout scm
+                        String revision = checkedOut?.GIT_COMMIT ?: ''
+                        if (!(revision ==~ /[a-f0-9]{40}/)) {
+                            error('Checkout did not return a full pipeline commit SHA')
+                        }
+                        env.PXB_PIPELINE_REVISION = revision
+                    }
                     sh 'python3 pxb/v2/ci/verify_worker.py'
                     sh '''
                         # sudo is needed for better node recovery after compilation failure

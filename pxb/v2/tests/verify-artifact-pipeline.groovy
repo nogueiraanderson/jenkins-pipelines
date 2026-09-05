@@ -19,7 +19,7 @@ def root = new File('.').canonicalFile
         timeout: { Map options, Closure body -> body() },
         dir: { String path, Closure body -> body() }, deleteDir: { -> },
         withCredentials: { List credentials, Closure body -> body() },
-        checkout: { value -> assert value == 'selected-scm'; events << 'checkout' }, echo: { ignored -> },
+        checkout: { value -> assert value == 'selected-scm'; events << 'checkout'; [GIT_COMMIT: 'b' * 40] }, echo: { ignored -> },
         error: { message -> throw new IllegalStateException(message.toString()) },
         sh: { value ->
             shells << (value instanceof Map ? value.script : value.toString())
@@ -37,6 +37,7 @@ def root = new File('.').canonicalFile
     assert shells.count { it == 'python3 pxb/v2/ci/verify_worker.py' } == 1
     assert events[events.indexOf('checkout') + 1] == 'python3 pxb/v2/ci/verify_worker.py'
     if (!compile) {
+        assert env.PXB_PIPELINE_REVISION == 'b' * 40
         assert copied.size() == 1 && copied[0].projectName == '/review/percona-xtrabackup-8.0-compile-param'
         assert copied[0].selector.number == '7'
         assert copied[0].includeBuildNumberInTargetPath

@@ -23,6 +23,9 @@ def main():
     build_type = os.environ['CMAKE_BUILD_TYPE']
     producer = os.environ['PXB_COMPILE_JOB']
     build = os.environ['PXB_COMPILE_BUILD']
+    pipeline_revision = os.environ['PXB_PIPELINE_REVISION']
+    if not re.fullmatch(r'[a-f0-9]{40}', pipeline_revision):
+        raise ValueError('PXB_PIPELINE_REVISION must be the full checked-out commit SHA')
     if arch not in ('x86_64', 'aarch64') or build_type not in ('RelWithDebInfo', 'Debug'):
         raise ValueError('Unsupported ARCH or CMAKE_BUILD_TYPE')
     if not re.fullmatch(r'[a-z][a-z0-9]*(?::[a-z0-9.]+)?', platform):
@@ -110,7 +113,7 @@ def main():
                           bucket='pxb-build-cache', key=key, sha256=digest.hexdigest(), size=expected_size,
                           arch=arch, docker_os=platform, build_type=build_type,
                           elf_machine=expected_machine,
-                          consumer_pipeline_revision=os.environ.get('GIT_COMMIT', ''))
+                          consumer_pipeline_revision=pipeline_revision)
         binary.replace(args.output)
         args.provenance.parent.mkdir(parents=True, exist_ok=True)
         args.provenance.write_text(json.dumps(provenance, indent=2) + '\n')

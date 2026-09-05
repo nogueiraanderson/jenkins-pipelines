@@ -31,7 +31,7 @@ class CompileArtifact(unittest.TestCase):
                         PXB_AWS_FIXTURE=str(self.work / 'aws.json'), PXB_AWS_RECORD=str(self.work / 'calls.jsonl'),
                         PXB_COMPILE_JOB='review/pr/percona-xtrabackup-8.0-compile-pipeline', PXB_COMPILE_BUILD='41',
                         ARCH='x86_64', DOCKER_OS='oraclelinux:9', CMAKE_BUILD_TYPE='RelWithDebInfo',
-                        GIT_COMMIT='a' * 40)
+                        GIT_COMMIT='a' * 40, PXB_PIPELINE_REVISION='b' * 40)
 
     def make_archive(self, machine):
         header = bytearray(64)
@@ -57,6 +57,7 @@ class CompileArtifact(unittest.TestCase):
         provenance = json.loads((self.work / 'results/compile-input.json').read_text())
         self.assertEqual(provenance['key'], self.key)
         self.assertEqual(provenance['producer_build'], 41)
+        self.assertEqual(provenance['consumer_pipeline_revision'], 'b' * 40)
         self.assertEqual(provenance['sha256'], hashlib.sha256(self.archive.read_bytes()).hexdigest())
         self.assertEqual((self.work / 'results/binary.tar.gz').read_bytes(), self.archive.read_bytes())
 
@@ -67,6 +68,19 @@ class CompileArtifact(unittest.TestCase):
         self.assertIn('ELF architecture', result.stderr)
         self.assertFalse((self.work / 'results/binary.tar.gz').exists())
         self.assertFalse((self.work / 'results/compile-input.json').exists())
+
+    def test_unverified_pipeline_revision_is_rejected_before_aws(self):
+        for revision in ('', 'master', 'b' * 39, 'G' * 40, None):
+            with self.subTest(revision=revision):
+                if revision is None:
+                    self.env.pop('PXB_PIPELINE_REVISION', None)
+                else:
+                    self.env['PXB_PIPELINE_REVISION'] = revision
+                result = self.run_fetch()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('PXB_PIPELINE_REVISION', result.stderr)
+                self.assertFalse((self.work / 'calls.jsonl').exists())
+                self.assertFalse((self.work / 'results/compile-input.json').exists())
 
     def test_another_producer_marker_in_the_same_folder_is_rejected(self):
         other = 'jenkins-review-pr-other-compile-pipeline-900'
