@@ -18,6 +18,13 @@ These are local contract checks, not a complete Jenkins or product validation.
 Run a pinned Jenkins canary as well. Do not treat an unpublished local fix as
 validated by a build of a different remote revision.
 
+`test_build_binary_boost.py` runs the actual local builder and stops at a CMake
+argument recorder. It checks the 2.4 cached-Boost default in release and Debug
+mode, unchanged 8.0 defaults, no new flags for other versions, and caller override
+precedence. The recorder's failure must stop the builder before make or packaging.
+This is not a successful CMake configure or product build. The test is self-contained
+and can also run directly with Python 3.9+.
+
 The 2.4, 8.0, 8.1 and 9.x compile and test pipelines check native worker architecture and Python
 3.9+ immediately after their pinned SCM checkout. The repository preview set
 publishes only the 8.0 compile and regular test pipelines. Run each architecture

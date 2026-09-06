@@ -9,4 +9,5 @@ groovy pxb/v2/tests/verify-copy-compile-input.groovy
 groovy pxb/v2/tests/verify-artifact-pipeline.groovy
 uv run --no-project python -m unittest discover -s pxb/v2/tests -p 'test_*.py' -v
 bash -n pxb/v2/docker/run-test
+bash -n pxb/v2/local/build-binary
 git diff --check -- pxb/v2
