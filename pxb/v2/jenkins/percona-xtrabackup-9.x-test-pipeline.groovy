@@ -107,7 +107,7 @@ pipeline {
                         // One run of percona-server-9.7-param-parallel-mtr on ps80 gives the server
                         // tarball of this OS, build type and architecture.
                         if (params.SERVER_TARBALL_PS_RUN && params.XTRABACKUP_TARGET.startsWith('xtradb')) {
-                            withCredentials([usernamePassword(credentialsId: 'ps80-jenkins-api-read', usernameVariable: 'PS80_API_USER', passwordVariable: 'PS80_API_TOKEN')]) {
+                            withCredentials([string(credentialsId: 'JNKPERCONA_PS80_TOKEN', variable: 'PS80_API_LOGIN')]) {
                                 env.SERVER_TARBALL_URL_FROM_PS_RUN = sh(returnStdout: true, script: 'bash pxb/v2/docker/ps-run-tarball-url 9.7 "${SERVER_TARBALL_PS_RUN}" "${DOCKER_OS}" "${CMAKE_BUILD_TYPE}"').trim()
                             }
                         }
