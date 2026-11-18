@@ -99,7 +99,7 @@ pipeline {
                         sudo git -C sources reset --hard || :
                         sudo git -C sources clean -xdf   || :
                         '''
-                    copyArtifacts filter: 'COMPILE_BUILD_TAG', projectName: 'percona-xtrabackup-8.0-compile-param', selector: lastSuccessful()
+                    copyArtifacts filter: 'COMPILE_BUILD_TAG', projectName: 'percona-xtrabackup-8.0-compile-pipeline', selector: lastSuccessful()
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: '24e68886-c552-4033-8503-ed85bbaa31f3', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                         sh '''#!/bin/bash
                             for file in $(find . -name "COMPILE_BUILD_TAG"); do
