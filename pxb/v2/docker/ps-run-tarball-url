@@ -5,7 +5,7 @@
 # run has no build for them.
 #
 # Usage: ps-run-tarball-url <series> <run number> <DOCKER_OS> <CMAKE_BUILD_TYPE> [<arch>]
-# Needs PS80_API_USER and PS80_API_TOKEN in the environment.
+# Needs PS80_API_LOGIN in the environment, written as user:token.
 
 set -o errexit
 set -o nounset
@@ -38,8 +38,8 @@ for value in "${docker_os}" "${build_type}" "${arch}"; do
     exit 2
   fi
 done
-if [[ -z ${PS80_API_USER:-} || -z ${PS80_API_TOKEN:-} ]]; then
-  echo "PS80_API_USER and PS80_API_TOKEN must be set" >&2
+if [[ ${PS80_API_LOGIN:-} != ?*:?* ]]; then
+  echo "PS80_API_LOGIN must be set as user:token" >&2
   exit 2
 fi
 
@@ -50,7 +50,7 @@ trap 'rm -f "${response}"' EXIT
 
 # Each pipeline build records the matrix cell and run that started it. The
 # login goes to curl on stdin, so it never shows in the process list.
-escaped_login="${PS80_API_USER}:${PS80_API_TOKEN}"
+escaped_login="${PS80_API_LOGIN}"
 escaped_login="${escaped_login//\\/\\\\}"
 escaped_login="${escaped_login//\"/\\\"}"
 http_status="$(curl --silent --show-error --get --max-time 60 --config - \
