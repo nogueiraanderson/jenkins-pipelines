@@ -33,6 +33,10 @@
             default: ""
             description: "Percona Server tarballs for the xtradb target, one line per OS and build type as DOCKER_OS CMAKE_BUILD_TYPE URL, for example ubuntu:noble Debug https://.../binary.tar.gz. A line for aarch64 is DOCKER_OS CMAKE_BUILD_TYPE aarch64 URL. Each URL is the binary.tar.gz of a percona-server pipeline-parallel-mtr build of that OS, build type and architecture. The asan runs use the oraclelinux:9 lines. An xtradb run with no line for its OS, build type and architecture fails. The innodb target keeps bootstrap.sh"
         - string:
+            name: SERVER_TARBALL_PS_RUN
+            default: ""
+            description: "Build number of percona-server-9.7-param-parallel-mtr on ps80. Each xtradb run takes the tarball that this run built for its OS, build type and architecture, and fails when the run has no such build. The percona-server-9.7-pipeline-parallel-mtr builds of that run must still exist on ps80. A line of SERVER_TARBALL_URLS wins for its OS and build type"
+        - string:
             name: INNODB9X_VERSION
             default: "9.7.2"
             description: Version of MySQL InnoDB which will be used for bootstrap.sh script

@@ -45,6 +45,10 @@ pipeline {
             defaultValue: '',
             description: 'Percona Server tarballs for the xtradb target, one line per OS and build type as DOCKER_OS CMAKE_BUILD_TYPE URL, for example ubuntu:noble Debug https://.../binary.tar.gz. A line for aarch64 is DOCKER_OS CMAKE_BUILD_TYPE aarch64 URL. Each URL is the binary.tar.gz of a percona-server pipeline-parallel-mtr build of that OS, build type and architecture. The asan runs use the oraclelinux:9 lines. An xtradb run with no line for its OS, build type and architecture fails. The innodb target keeps bootstrap.sh. A set SERVER_TARBALL_URL wins over this list',
             name: 'SERVER_TARBALL_URLS')
+        string(
+            defaultValue: '',
+            description: 'Build number of percona-server-8.4-param-parallel-mtr on ps80. Each xtradb run takes the tarball that this run built for its OS, build type and architecture, and fails when the run has no such build. The percona-server-8.4-pipeline-parallel-mtr builds of that run must still exist on ps80. SERVER_TARBALL_URL and a line of SERVER_TARBALL_URLS win over it',
+            name: 'SERVER_TARBALL_PS_RUN')
         booleanParam(
             defaultValue: false,
             description: 'Starts Microsoft Azurite emulator and tests xbcloud against it',
@@ -99,6 +103,15 @@ pipeline {
                         sudo git -C sources reset --hard || :
                         sudo git -C sources clean -xdf   || :
                         '''
+                    script {
+                        // One run of percona-server-8.4-param-parallel-mtr on ps80 gives the server
+                        // tarball of this OS, build type and architecture.
+                        if (params.SERVER_TARBALL_PS_RUN && params.XTRABACKUP_TARGET.startsWith('xtradb')) {
+                            withCredentials([usernamePassword(credentialsId: 'ps80-jenkins-api-read', usernameVariable: 'PS80_API_USER', passwordVariable: 'PS80_API_TOKEN')]) {
+                                env.SERVER_TARBALL_URL_FROM_PS_RUN = sh(returnStdout: true, script: 'bash pxb/v2/docker/ps-run-tarball-url 8.4 "${SERVER_TARBALL_PS_RUN}" "${DOCKER_OS}" "${CMAKE_BUILD_TYPE}"').trim()
+                            }
+                        }
+                    }
                     copyArtifacts filter: 'COMPILE_BUILD_TAG', projectName: 'percona-xtrabackup-8.1-compile-param', selector: specific("${USE_BINARIES_FROM_BUILD_ID}")
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: '24e68886-c552-4033-8503-ed85bbaa31f3', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                         sh '''#!/bin/bash

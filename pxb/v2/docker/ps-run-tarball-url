@@ -1,0 +1,79 @@
+#!/bin/bash
+#
+# Prints the URL of the server tarball that one param-parallel-mtr run on ps80
+# built for an OS, a build type and an architecture. Prints nothing when the
+# run has no build for them.
+#
+# Usage: ps-run-tarball-url <series> <run number> <DOCKER_OS> <CMAKE_BUILD_TYPE> [<arch>]
+# Needs PS80_API_USER and PS80_API_TOKEN in the environment.
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+if [[ $# -lt 4 ]]; then
+  echo "Usage: $0 <series> <run number> <DOCKER_OS> <CMAKE_BUILD_TYPE> [<arch>]" >&2
+  exit 2
+fi
+
+series="${1}"
+run_number="${2}"
+docker_os="${3}"
+build_type="${4}"
+arch="${5:-$(uname -m)}"
+
+# The asan runs use the oraclelinux:9 image.
+if [[ ${docker_os} == "asan" ]]; then
+  docker_os="oraclelinux:9"
+fi
+
+# These values go into the query, so they must hold only the expected characters.
+if [[ ! ${series} =~ ^[0-9]+\.[0-9]+$ || ! ${run_number} =~ ^[0-9]+$ ]]; then
+  echo "The series must look like 9.7 and the run number must be a number" >&2
+  exit 2
+fi
+for value in "${docker_os}" "${build_type}" "${arch}"; do
+  if [[ ! ${value} =~ ^[A-Za-z0-9:._-]+$ ]]; then
+    echo "Unexpected characters in '${value}'" >&2
+    exit 2
+  fi
+done
+if [[ -z ${PS80_API_USER:-} || -z ${PS80_API_TOKEN:-} ]]; then
+  echo "PS80_API_USER and PS80_API_TOKEN must be set" >&2
+  exit 2
+fi
+
+pipeline_job="percona-server-${series}-pipeline-parallel-mtr"
+cell="percona-server-${series}-param-parallel-mtr/ARCH=${arch},CMAKE_BUILD_TYPE=${build_type},DOCKER_OS=${docker_os}"
+response="$(mktemp)"
+trap 'rm -f "${response}"' EXIT
+
+# Each pipeline build records the matrix cell and run that started it. The
+# login goes to curl on stdin, so it never shows in the process list.
+escaped_login="${PS80_API_USER}:${PS80_API_TOKEN}"
+escaped_login="${escaped_login//\\/\\\\}"
+escaped_login="${escaped_login//\"/\\\"}"
+http_status="$(curl --silent --show-error --get --max-time 60 --config - \
+  --output "${response}" --write-out '%{http_code}' \
+  --data-urlencode "tree=allBuilds[number,actions[causes[upstreamProject,upstreamBuild]]]" \
+  --data-urlencode "xpath=//allBuild[action/cause[upstreamBuild=${run_number} and upstreamProject='${cell}']]/number" \
+  --data-urlencode "wrapper=builds" \
+  "https://ps80.cd.percona.com/job/${pipeline_job}/api/xml" <<< "user = \"${escaped_login}\"")"
+if [[ ${http_status} != "200" ]]; then
+  echo "ps80 answered HTTP ${http_status} for ${pipeline_job}" >&2
+  exit 1
+fi
+
+# A retried cell has more than one build, the newest one counts.
+build_number="$(grep -o '<number>[0-9]*</number>' "${response}" | tr -dc '0-9\n' | sort -n | tail -n 1 || true)"
+if [[ -z ${build_number} ]]; then
+  exit 0
+fi
+
+tarball_url="https://s3.us-east-2.amazonaws.com/ps-build-cache/jenkins-${pipeline_job}-${build_number}/binary.tar.gz"
+tarball_status="$(curl --silent --head --max-time 60 --output /dev/null --write-out '%{http_code}' "${tarball_url}")"
+if [[ ${tarball_status} != "200" ]]; then
+  echo "Build ${build_number} of ${pipeline_job} has no tarball, HTTP ${tarball_status} for ${tarball_url}" >&2
+  exit 1
+fi
+echo "${tarball_url}"

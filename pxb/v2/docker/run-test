@@ -24,9 +24,12 @@ fi
 
 # A line of SERVER_TARBALL_URLS holds "<DOCKER_OS> <CMAKE_BUILD_TYPE> <URL>" for
 # x86_64, or "<DOCKER_OS> <CMAKE_BUILD_TYPE> <ARCH> <URL>". An xtradb run takes
-# its own line and stops when the list has none. A set SERVER_TARBALL_URL is kept.
+# its own line, then the URL of the ps80 run, and stops when it has neither.
 function select_server_tarball_url() {
-  if [[ -n ${SERVER_TARBALL_URL} || -z ${SERVER_TARBALL_URLS} || ${XTRABACKUP_TARGET} != xtradb* ]]; then
+  if [[ -n ${SERVER_TARBALL_URL} || ${XTRABACKUP_TARGET} != xtradb* ]]; then
+    return 0
+  fi
+  if [[ -z ${SERVER_TARBALL_URLS} && -z ${SERVER_TARBALL_PS_RUN} ]]; then
     return 0
   fi
   local arch
@@ -36,6 +39,13 @@ function select_server_tarball_url() {
     $1 != os || $2 != build_type { next }
     NF == 3 && arch == "x86_64" { print $3; exit }
     NF == 4 && $3 == arch { print $4; exit }' <<< "${SERVER_TARBALL_URLS}")
+  if [[ -z ${SERVER_TARBALL_URL} ]]; then
+    SERVER_TARBALL_URL=${SERVER_TARBALL_URL_FROM_PS_RUN}
+  fi
+  if [[ -z ${SERVER_TARBALL_URL} && -n ${SERVER_TARBALL_PS_RUN} ]]; then
+    echo "ps80 run ${SERVER_TARBALL_PS_RUN} has no build for ${SOURCE_IMAGE} ${CMAKE_BUILD_TYPE} ${arch}" >&2
+    return 1
+  fi
   if [[ -z ${SERVER_TARBALL_URL} ]]; then
     echo "SERVER_TARBALL_URLS has no line for ${SOURCE_IMAGE} ${CMAKE_BUILD_TYPE} ${arch}" >&2
     return 1
