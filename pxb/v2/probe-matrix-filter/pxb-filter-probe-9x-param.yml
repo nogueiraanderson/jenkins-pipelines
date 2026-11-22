@@ -8,6 +8,10 @@
     concurrent: true
     node: launcher-x64
     properties:
+    - groovy-label:
+        script: |
+            return 'launcher-x64'
+        sandbox: true
     - build-discarder:
         num-to-keep: 20
     parameters:
