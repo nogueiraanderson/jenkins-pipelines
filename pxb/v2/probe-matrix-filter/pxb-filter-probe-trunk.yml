@@ -1,0 +1,16 @@
+- job:
+    name: pxb-filter-probe-trunk
+    project-type: freestyle
+    description: |
+        Probe: triggers the probe matrix jobs like the pxb trunk jobs do, without WITH_AARCH64.
+    node: launcher-x64
+    builders:
+    - trigger-builds:
+      - project: pxb-filter-probe-9x-param
+        current-parameters: false
+        predefined-parameters: |
+          BRANCH=trunk
+        block: true
+      - project: pxb-filter-probe-80-param
+        current-parameters: false
+        block: true

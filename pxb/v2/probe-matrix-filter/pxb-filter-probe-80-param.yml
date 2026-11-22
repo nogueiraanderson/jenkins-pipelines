@@ -1,0 +1,49 @@
+- job:
+    name: pxb-filter-probe-80-param
+    project-type: matrix
+    defaults: global
+    description: |
+        Probe of the 8.0 and 8.1 combination filter with WITH_AARCH64. Each cell only prints its axes.
+    disabled: false
+    concurrent: true
+    node: launcher-x64
+    properties:
+    - build-discarder:
+        num-to-keep: 20
+    parameters:
+    - bool:
+        name: WITH_AARCH64
+        default: false
+        description: "Add the aarch64 cells"
+    axes:
+    - axis:
+        name: CMAKE_BUILD_TYPE
+        type: user-defined
+        values:
+          - RelWithDebInfo
+          - Debug
+    - axis:
+        type: user-defined
+        name: DOCKER_OS
+        values:
+        - centos:8
+        - oraclelinux:9
+        - ubuntu:focal
+        - ubuntu:jammy
+        - ubuntu:noble
+        - debian:bullseye
+        - debian:bookworm
+        - asan
+    - axis:
+        type: user-defined
+        name: ARCH
+        values:
+        - x86_64
+        - aarch64
+    execution-strategy:
+      combination-filter: >-
+        ARCH == "x86_64" ||
+        (WITH_AARCH64 == "true" && ARCH == "aarch64" && DOCKER_OS == "oraclelinux:9" && CMAKE_BUILD_TYPE == "RelWithDebInfo")
+    builders:
+    - shell: |
+        echo "cell ARCH=${{ARCH}} DOCKER_OS=${{DOCKER_OS}} CMAKE_BUILD_TYPE=${{CMAKE_BUILD_TYPE}} WITH_AARCH64=${{WITH_AARCH64}}"

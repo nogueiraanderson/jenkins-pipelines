@@ -1,0 +1,20 @@
+- job:
+    name: pxb-filter-probe-multijob
+    project-type: multijob
+    description: |
+        Probe: passes WITH_AARCH64 down like the pxb multijobs do.
+    node: launcher-x64
+    parameters:
+        - bool:
+            name: WITH_AARCH64
+            default: false
+            description: "Add the aarch64 cells"
+    builders:
+    - multijob:
+        name: probe-stage
+        condition: COMPLETED
+        projects:
+            - name: pxb-filter-probe-9x-param
+              current-parameters: true
+            - name: pxb-filter-probe-80-param
+              current-parameters: true

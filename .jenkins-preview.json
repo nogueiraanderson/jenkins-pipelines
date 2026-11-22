@@ -1,0 +1,20 @@
+{
+  "sets": {
+    "pxb-filter-probe": {
+      "yaml_dir": "pxb/v2/probe-matrix-filter",
+      "jobs": [
+        "pxb-filter-probe-80-param",
+        "pxb-filter-probe-9x-param",
+        "pxb-filter-probe-multijob",
+        "pxb-filter-probe-trunk"
+      ],
+      "stages": {
+        "multijob": ["pxb-filter-probe-multijob"],
+        "trunk": ["pxb-filter-probe-trunk"],
+        "matrix9x": ["pxb-filter-probe-9x-param"],
+        "matrix80": ["pxb-filter-probe-80-param"]
+      },
+      "stage_order": ["multijob", "trunk", "matrix9x", "matrix80"]
+    }
+  }
+}
